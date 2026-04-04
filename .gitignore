@@ -1,0 +1,11 @@
+.env
+state/
+corrected_music/
+corrected_traktor/
+review.json
+unmappable.json
+__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+.venv/
