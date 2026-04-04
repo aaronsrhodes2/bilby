@@ -35,8 +35,12 @@ OUTPUT_JSON = STATE_DIR / "path_map.json"
 REVIEW_JSON = Path(__file__).parent / "review.json"
 
 DEST_ROOT = Path(__file__).parent / "corrected_music"
+SKIPPED_LARGE_JSON = STATE_DIR / "skipped_large.json"
 
 UNSAFE_CHARS = r'\/:*?"<>|'
+
+# Files larger than this are mixes/full-albums/WAV masters — skip them.
+SKIP_ABOVE_BYTES = 50 * 1_048_576  # 50 MB
 
 
 def sanitize(name: str, max_len: int = 100) -> str:
@@ -216,13 +220,24 @@ def main():
     used_dest_paths: set[str] = set()
     collisions = []
     copy_errors = []
+    skipped_large = []
 
     print(f"  Processing {len(groups):,} unique tracks...")
+    print(f"  Skipping files > {SKIP_ABOVE_BYTES // 1_048_576} MB (mixes/masters)")
 
     for sha, group_info in tqdm(groups.items(), desc="Copying", unit="track"):
         winner_src = group_info["winner"]
         losers = group_info["losers"]
         ext = group_info["winner_format"]
+
+        # Skip large files (mixes, full albums, WAV masters)
+        try:
+            src_size = os.path.getsize(winner_src)
+        except OSError:
+            src_size = 0
+        if src_size > SKIP_ABOVE_BYTES:
+            skipped_large.append({"sha256": sha, "path": winner_src, "size_bytes": src_size})
+            continue
 
         meta = tracks.get(sha, {})
         artist = meta.get("artist", "") or "Unknown Artist"
@@ -262,6 +277,10 @@ def main():
             path_map[loser] = dest_str
 
     print(f"\n  Copied {len(path_map) - len(copy_errors):,} files")
+    if skipped_large:
+        skipped_bytes = sum(s["size_bytes"] for s in skipped_large)
+        print(f"  {len(skipped_large)} files skipped (>{SKIP_ABOVE_BYTES // 1_048_576} MB) — {skipped_bytes / 1_048_576:.0f} MB not copied")
+        SKIPPED_LARGE_JSON.write_text(json.dumps(skipped_large, ensure_ascii=False, indent=2))
     if copy_errors:
         print(f"  {len(copy_errors)} copy errors")
     if collisions:
