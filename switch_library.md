@@ -17,21 +17,23 @@ Our corrected collection is here:
 
 ---
 
-## Step 1 — Test First (Non-Destructive)
+## Step 1 — Validate the NML Before Touching Traktor
 
-Open Traktor. Do NOT replace anything yet.
+> ⚠️ Do NOT use **File → Import Another Collection** as your test.
+> That pathway is known to grey out and silently fail on valid NML files,
+> giving a false negative. See: NI Community thread #12721.
+> We test by directly swapping the file and verifying, with a clean rollback path.
 
-1. In Traktor: **File → Import Another Collection**
-2. Navigate to `~/development/music organize/corrected_traktor/collection.nml`
-3. Traktor imports it as a separate sub-library you can browse
-4. Spot-check 10–20 tracks:
-   - Do they load and play?
-   - Are cue points present?
-   - Is the BPM correct?
-   - Search for a known track — does it appear once (not duplicated)?
-5. Look at the bottom of the browser — are there any red/grey "file not found" tracks?
+First, validate the XML is well-formed:
 
-**If you see file not found errors → STOP. Do not proceed to Step 2. File a bug.**
+```bash
+xmllint --noout ~/development/music\ organize/corrected_traktor/collection.nml \
+  && echo "XML OK" || echo "XML BROKEN — do not proceed"
+```
+
+If that prints `XML BROKEN` → stop and file a bug before touching anything.
+
+---
 
 ---
 
@@ -54,19 +56,29 @@ Takes about 30 seconds. Do not skip this.
 
 ## Step 3 — Switch to the Corrected Library
 
+**Quit Traktor completely before doing this.**
+
 ```bash
 # Replace collection.nml with our corrected version
 cp ~/development/music\ organize/corrected_traktor/collection.nml \
    ~/Documents/Native\ Instruments/Traktor\ 4.0.2/collection.nml
 ```
 
-Then copy any corrected playlist NMLs you want to keep:
+Then copy any corrected playlist NMLs:
 ```bash
 cp ~/development/music\ organize/corrected_traktor/*.nml \
    ~/Documents/Native\ Instruments/Traktor\ 4.0.2/
 ```
 
-Relaunch Traktor. Your library should now be the corrected one.
+Relaunch Traktor. It will read the file directly as its primary collection —
+no import step needed. Spot-check 10–20 tracks:
+- Do they load and play?
+- Are cue points present?
+- Is the BPM correct?
+- Search for a known track — does it appear once (not duplicated)?
+- Any red/grey "file not found" indicators?
+
+**If something looks wrong → rollback immediately (see below). Do not save or let Traktor re-write the collection.**
 
 ---
 

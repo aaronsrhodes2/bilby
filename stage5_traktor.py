@@ -65,6 +65,21 @@ EXCLUDED_DIRS = {
 ET.register_namespace("", "")
 
 
+def fix_xml_declaration(dest_path: Path):
+    """
+    Replace Python ET's single-quoted declaration with Traktor's expected format.
+    ET writes:  <?xml version='1.0' encoding='UTF-8'?>
+    Traktor expects: <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+    """
+    content = dest_path.read_bytes()
+    content = content.replace(
+        b"<?xml version='1.0' encoding='UTF-8'?>",
+        b'<?xml version="1.0" encoding="UTF-8" standalone="no" ?>',
+        1,
+    )
+    dest_path.write_bytes(content)
+
+
 def is_in_excluded_dir(abs_path: str) -> bool:
     """Return True if this path lives in one of our excluded (unscanned) directories."""
     return any(
@@ -243,8 +258,27 @@ def process_collection_nml(
           f"Deduped away: {deduped:,} | Dropped (pre-existing missing): {dropped:,}")
     print(f"    Output entries: {len(new_entries):,}")
 
+    # Fix PLAYLISTS section — update PRIMARYKEY KEY attributes to new paths.
+    # These are the playlist track references embedded in collection.nml itself.
+    playlists = root.find("PLAYLISTS")
+    pk_remapped = pk_kept = 0
+    if playlists is not None:
+        for node in playlists.iter("ENTRY"):
+            pk_el = node.find("PRIMARYKEY")
+            if pk_el is None:
+                continue
+            old_path = primarykey_to_abs(pk_el.get("KEY", ""))
+            action, new_path = classify_entry(old_path, path_map, old_to_sha)
+            if action == "remap":
+                pk_el.set("KEY", abs_to_primarykey(new_path))
+                pk_remapped += 1
+            else:
+                pk_kept += 1  # keep_original or drop — leave KEY as-is
+        print(f"    Playlist PRIMARYKEY: {pk_remapped:,} remapped, {pk_kept:,} left as-is")
+
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     tree.write(str(dest_path), encoding="UTF-8", xml_declaration=True)
+    fix_xml_declaration(dest_path)
     print(f"    Written to {dest_path}")
 
 
@@ -282,29 +316,29 @@ def process_playlist_nml(
         for entry in entries_to_remove:
             collection.remove(entry)
 
-    # Update PLAYLISTS PRIMARYKEY paths
+    # Update PLAYLISTS PRIMARYKEY paths.
+    # PRIMARYKEY is a child *element* of ENTRY, not an attribute:
+    #   <ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/..."></PRIMARYKEY></ENTRY>
     playlists = root.find("PLAYLISTS")
+    pk_remapped = 0
     if playlists is not None:
-        nodes_to_remove = []
         for node in playlists.iter("ENTRY"):
-            pk = node.get("PRIMARYKEY")
-            if not pk:
+            pk_el = node.find("PRIMARYKEY")
+            if pk_el is None:
                 continue
-            old_path = primarykey_to_abs(pk)
+            old_path = primarykey_to_abs(pk_el.get("KEY", ""))
             action, new_path = classify_entry(old_path, path_map, old_to_sha)
             if action == "remap":
-                node.set("PRIMARYKEY", abs_to_primarykey(new_path))
-            elif action == "keep_original":
-                pass  # leave PRIMARYKEY as-is
-            else:
-                nodes_to_remove.append((node, node.getparent() if hasattr(node, 'getparent') else None))
-        # Note: removing playlist nodes is complex with ElementTree — leave them;
-        # missing playlist entries will just show as unresolved in the playlist view,
-        # which is acceptable (they were already broken).
+                pk_el.set("KEY", abs_to_primarykey(new_path))
+                pk_remapped += 1
+            # keep_original or drop: leave KEY as-is
+            # (missing entries show as unresolved in Traktor — acceptable)
 
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     tree.write(str(dest_path), encoding="UTF-8", xml_declaration=True)
-    print(f"  {nml_path.name}: {updated} remapped, {kept} kept, {dropped} dropped → {dest_path.name}")
+    fix_xml_declaration(dest_path)
+    print(f"  {nml_path.name}: {updated} remapped, {kept} kept, {dropped} dropped, "
+          f"{pk_remapped} playlist keys updated → {dest_path.name}")
 
 
 def main():
