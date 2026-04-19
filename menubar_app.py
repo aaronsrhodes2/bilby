@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
 """
-DJ Block Planner — macOS menu bar app.
+Maker Shaker — macOS menu bar app for the DJ Block Planner.
 
-Sits in the menu bar as a ♪ icon. Click to open/focus the browser window.
-Shows the currently playing track as the menu title when a deck is active.
-Starts the Flask server automatically if it isn't already running.
+Sits in the menu bar with a vinyl record icon. Click to open/focus the
+browser window. Shows the currently playing track in the dropdown.
+Starts the Flask server automatically if it isn't running.
 
 Usage:
     python3 menubar_app.py
 """
 
+import json
 import subprocess
 import threading
 import time
-import webbrowser
 from pathlib import Path
 from urllib.request import urlopen
-from urllib.error import URLError
 
 import rumps
 
+APP_NAME    = "Maker Shaker"
 SERVER_URL  = "http://localhost:7334"
-SERVER_PORT = 7334
 PROJECT_DIR = Path(__file__).parent
 SERVER_SCRIPT = PROJECT_DIR / "stage9_dj_suggest.py"
-
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+ICON_PATH   = str(PROJECT_DIR / "misc" / "menubar_icon.png")
 WINDOW_SIZE = "1100,900"
 
 
@@ -45,26 +43,51 @@ def start_server():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        # Wait for it to come up
         for _ in range(20):
             time.sleep(0.5)
             if server_is_up():
                 break
 
 
-def open_browser():
-    subprocess.Popen(
-        [CHROME, f"--app={SERVER_URL}", f"--window-size={WINDOW_SIZE}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+def focus_or_open_browser():
+    """Bring the Maker Shaker Chrome window to front, or open a new one."""
+    # Try to focus an existing app-mode window via AppleScript
+    script = f'''
+    tell application "Google Chrome"
+        set found to false
+        repeat with w in windows
+            repeat with t in tabs of w
+                if URL of t contains "localhost:7334" then
+                    set index of w to 1
+                    activate
+                    set found to true
+                    exit repeat
+                end if
+            end repeat
+            if found then exit repeat
+        end repeat
+        if not found then
+            open location "{SERVER_URL}"
+        end if
+    end tell
+    tell application "Google Chrome" to activate
+    '''
+    result = subprocess.run(["osascript", "-e", script],
+                            capture_output=True, text=True)
+    # If Chrome had no matching window, open app-mode window
+    if result.returncode != 0 or "not found" in result.stderr:
+        subprocess.Popen(
+            ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+             f"--app={SERVER_URL}", f"--window-size={WINDOW_SIZE}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
 
-class DJPlannerApp(rumps.App):
+class MakerShaker(rumps.App):
     def __init__(self):
-        super().__init__("♪", quit_button=None)
+        super().__init__(APP_NAME, icon=ICON_PATH, template=True, quit_button=None)
         self.menu = [
-            rumps.MenuItem("Open DJ Planner", callback=self.open_planner),
+            rumps.MenuItem("Open Maker Shaker", callback=self.open_planner),
             rumps.separator,
             rumps.MenuItem("Now Playing:"),
             rumps.MenuItem("  —"),
@@ -80,50 +103,36 @@ class DJPlannerApp(rumps.App):
 
     def open_planner(self, _=None):
         if not server_is_up():
-            self.title = "♪…"
             start_server()
-        open_browser()
-        self.title = "♪"
+        focus_or_open_browser()
 
     def restart_server(self, _):
         subprocess.run(["pkill", "-f", "stage9_dj_suggest.py"], capture_output=True)
         time.sleep(1)
         start_server()
-        self.title = "♪"
 
     def _poll_loop(self):
-        """Poll /api/deck-status every 3s and update menu title."""
         while True:
             try:
-                import json
                 with urlopen(f"{SERVER_URL}/api/deck-status", timeout=2) as r:
                     d = json.loads(r.read())
-                # Find the playing deck
                 if d.get("a") and d.get("playing_a"):
                     t = d["a"]
-                    label = f"  A ▶  {t['artist']} — {t['title']}"
-                    self.title = "▶ ♪"
+                    self._now_playing_item.title = f"  A ▶  {t['artist']} — {t['title']}"[:60]
                 elif d.get("b") and d.get("playing_b"):
                     t = d["b"]
-                    label = f"  B ▶  {t['artist']} — {t['title']}"
-                    self.title = "▶ ♪"
+                    self._now_playing_item.title = f"  B ▶  {t['artist']} — {t['title']}"[:60]
                 elif d.get("a") or d.get("b"):
                     t = d.get("a") or d.get("b")
-                    label = f"  {t['artist']} — {t['title']}"
-                    self.title = "♪"
+                    self._now_playing_item.title = f"  {t['artist']} — {t['title']}"[:60]
                 else:
-                    label = "  No track loaded"
-                    self.title = "♪"
-                self._now_playing_item.title = label[:60]
+                    self._now_playing_item.title = "  No track loaded"
             except Exception:
-                self.title = "♪"
                 self._now_playing_item.title = "  Server offline"
             time.sleep(3)
 
 
 if __name__ == "__main__":
-    # Ensure server is running before the app loop starts
     if not server_is_up():
-        t = threading.Thread(target=start_server, daemon=True)
-        t.start()
-    DJPlannerApp().run()
+        threading.Thread(target=start_server, daemon=True).start()
+    MakerShaker().run()
