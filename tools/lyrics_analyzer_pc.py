@@ -166,6 +166,7 @@ def main():
     parser.add_argument("--skip-fetch",      action="store_true",       help="Skip lyrics fetch phase")
     parser.add_argument("--skip-summarize",  action="store_true",       help="Skip summarization phase")
     parser.add_argument("--report",          action="store_true",       help="Show stats and exit")
+    parser.add_argument("--retag-themes",   action="store_true",       help="Add theme tags to existing summaries that lack them")
     parser.add_argument("--push",            action="store_true",       help="Git commit + push when done")
     args = parser.parse_args()
 
@@ -278,6 +279,66 @@ def main():
 
         LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
         print(f"Summarize complete: {summ_done:,} done, {summ_flagged} flagged")
+
+    # ── Phase 2b: Retag themes on existing summaries ──────────────────────
+    if args.retag_themes:
+        to_retag = [dkey for dkey, v in dedup.items() if v.get("summary") and not v.get("theme")]
+        print(f"\nPhase 2b: Tagging themes for {len(to_retag):,} existing summaries "
+              f"({args.workers} workers)…")
+
+        THEME_PROMPT = (
+            "You are tagging songs with an emotional theme for a DJ.\n"
+            f"Choose exactly ONE word from this list: {', '.join(THEMES)}\n"
+            "Respond with valid JSON only. Example: {{\"theme\": \"loss\"}}"
+        )
+
+        retag_lock = threading.Lock()
+        retag_done = 0
+        start_time = time.time()
+
+        def retag_one(dkey):
+            nonlocal retag_done
+            summary = dedup[dkey]["summary"]
+            payload = {
+                "model":  args.model,
+                "system": THEME_PROMPT,
+                "prompt": f'Song summary: "{summary}"',
+                "stream": False,
+                "options": {"temperature": 0.1},
+            }
+            body = json.dumps(payload).encode()
+            req  = Request("http://localhost:11434/api/generate",
+                           data=body, method="POST",
+                           headers={"Content-Type": "application/json"})
+            try:
+                with urlopen(req, timeout=30) as r:
+                    resp = json.loads(r.read())
+                    raw  = resp.get("response", "").strip()
+                    raw  = re.sub(r'^```(?:json)?\s*', '', raw)
+                    raw  = re.sub(r'\s*```$', '', raw)
+                    parsed = json.loads(raw)
+                    theme  = parsed.get("theme", "").lower().strip()
+                    if theme not in THEMES:
+                        theme = ""
+                    with retag_lock:
+                        dedup[dkey]["theme"] = theme
+                        retag_done += 1
+                        if retag_done % 100 == 0:
+                            elapsed   = time.time() - start_time
+                            rate      = retag_done / elapsed if elapsed else 0
+                            remaining = (len(to_retag) - retag_done) / rate if rate else 0
+                            LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
+                            print(f"  [{retag_done}/{len(to_retag)}] — "
+                                  f"{remaining/60:.0f}m remaining")
+            except Exception as e:
+                pass
+
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            list(ex.map(retag_one, to_retag))
+
+        LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
+        tagged = sum(1 for v in dedup.values() if v.get("theme"))
+        print(f"Retag complete: {retag_done:,} tagged ({tagged:,} total with themes)")
 
     # ── Phase 3: Git commit + push ─────────────────────────────────────────
     if args.push:
