@@ -12,3 +12,4 @@ __pycache__/
 lastfm_creds.txt
 spotify_creds.txt
 spotify_token.json
+suggestions/
