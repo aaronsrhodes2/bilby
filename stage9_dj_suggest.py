@@ -16,12 +16,14 @@ Traktor Preferences → Controller Manager → Add → Generic OSC
   Out-Port:      9000
   Out-IP:        127.0.0.1
 
-Add four OUT mappings (Type: Output, each one):
+Add six OUT mappings (Type: Output, each one):
 
   Control: Track > Title     Deck: Deck A   OSC Address: /deck/a/title
   Control: Track > Artist    Deck: Deck A   OSC Address: /deck/a/artist
+  Control: Deck > Play       Deck: Deck A   OSC Address: /deck/a/play
   Control: Track > Title     Deck: Deck B   OSC Address: /deck/b/title
   Control: Track > Artist    Deck: Deck B   OSC Address: /deck/b/artist
+  Control: Deck > Play       Deck: Deck B   OSC Address: /deck/b/play
 
 Save and close Preferences. Traktor will now broadcast track info here.
 ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +49,10 @@ from lib.nml_parser import traktor_to_abs
 BASE            = Path(__file__).parent
 TRAKTOR_NML     = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/collection.nml"
 SUGGESTIONS_DIR = BASE / "suggestions"
-PORT            = 5001
+REP_FLAGS_FILE  = BASE / "misc" / "reputation_flags.json"
+LYRICS_INDEX    = BASE / "state" / "lyrics_index.json"
+ACTIVITY_FILE   = BASE / "state" / "activity.json"
+PORT            = 7334
 OSC_PORT        = 9000
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -69,17 +74,73 @@ class Track:
         return f"{self.artist} {self.title}".lower()
 
     def to_dict(self, score: float = 0.0, transition: str = "") -> dict:
+        rep = reputation_for(self.artist)
+        lyr = lyrics_for(self.path)
         return {
-            "path":       self.path,
-            "artist":     self.artist,
-            "title":      self.title,
-            "bpm":        round(self.bpm, 1),
-            "key":        self.key,
-            "genre":      self.genre,
-            "stars":      self.stars,
-            "score":      round(score * 100),
-            "transition": transition,
+            "path":         self.path,
+            "artist":       self.artist,
+            "title":        self.title,
+            "bpm":          round(self.bpm, 1),
+            "key":          self.key,
+            "genre":        self.genre,
+            "stars":        self.stars,
+            "score":        round(score * 100),
+            "transition":   transition,
+            "rep_tier":     rep["tier"]     if rep else None,
+            "rep_summary":  rep["summary"]  if rep else None,
+            "lyric_summary":lyr["summary"]  if lyr else None,
+            "lyric_flags":  lyr["flags"]    if lyr else [],
         }
+
+
+# ── Reputation flags ──────────────────────────────────────────────────────────
+
+def load_reputation_flags(path: Path) -> dict[str, dict]:
+    """
+    Returns a dict mapping normalised artist-name → {tier, summary, name}.
+    Covers both direct artist names and band memberships.
+    """
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    index: dict[str, dict] = {}
+    for flag in data.get("flags", []):
+        entry = {"tier": flag["tier"], "summary": flag["summary"], "name": flag["name"]}
+        for artist_name in flag.get("artists", []):
+            index[artist_name.lower().strip()] = entry
+        for band in flag.get("members", []):
+            index[band.lower().strip()] = entry
+    return index
+
+REP_FLAGS: dict[str, dict] = load_reputation_flags(REP_FLAGS_FILE)
+
+def reputation_for(artist: str) -> dict | None:
+    """Return reputation flag dict if the artist is flagged, else None."""
+    return REP_FLAGS.get(artist.lower().strip())
+
+
+# ── Lyrics index ──────────────────────────────────────────────────────────────
+
+def load_lyrics_index(path: Path) -> dict[str, dict]:
+    """Load lyrics summary+flags cache. Returns {} if not yet built."""
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+LYRICS: dict[str, dict] = load_lyrics_index(LYRICS_INDEX)
+
+def lyrics_for(path: str) -> dict | None:
+    """Return {summary, flags} for a track path, or None."""
+    entry = LYRICS.get(path)
+    if not entry or not entry.get("summary"):
+        return None
+    return entry
 
 
 # ── NML loader ────────────────────────────────────────────────────────────────
@@ -290,6 +351,25 @@ _PRINT_LOCK   = threading.Lock()
 _SUGG_LOCK    = threading.Lock()
 _SUGG_STATE: dict = {"slot2": [], "slot3": [], "anchor": None}
 
+# Paths loaded into Traktor this session — used by Surprise Me to avoid repeats
+_PLAYED_LOCK  = threading.Lock()
+_PLAYED_PATHS: set[str] = set()
+
+FLOOR_GENRES = {
+    "EBM", "Industrial", "Gothic Rock", "Darkwave", "Post-Punk",
+    "Synthpop", "Electronic", "New Wave", "Hard Rock", "Metal",
+    "Alternative Rock", "Punk", "Dark Electro", "Aggrotech",
+    "Noise", "Power Electronics", "Futurepop",
+}
+
+def _mark_played(path: str) -> None:
+    with _PLAYED_LOCK:
+        _PLAYED_PATHS.add(path)
+
+def _get_played() -> set[str]:
+    with _PLAYED_LOCK:
+        return set(_PLAYED_PATHS)
+
 
 def _update_sugg_state(slot2: list, slot3: list, anchor) -> None:
     with _SUGG_LOCK:
@@ -442,7 +522,7 @@ def print_suggestions(
     lines: list[str] = []
 
     # ── Header ───────────────────────────────────────────────────────────────
-    deck_tag  = f"{_RED}DECK {deck.upper()} ▶{_R}  " if deck else "  "
+    deck_tag  = f"{_RED}DECK {deck.upper()} ▶ PLAYING{_R}  " if deck else "  "
     stars_str = _GLD + _STARS.get(anchor.stars, "     ") + _R
     bpm_str   = _YLW + f"{anchor.bpm:.1f}" + _R
     key_str   = _CYN + anchor.key + _R
@@ -546,25 +626,230 @@ def run_key_listener() -> None:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
+# ── lsof deck watcher ────────────────────────────────────────────────────────
+
+AUDIO_EXTS = {".mp3", ".flac", ".aiff", ".aif", ".wav", ".m4a", ".ogg"}
+TRAKTOR_PROC = "Traktor Pro 4"
+
+
+def _traktor_open_audio() -> list[tuple[int, str]]:
+    """
+    Return list of (fd, abs_path) for audio files open in Traktor,
+    sorted by file descriptor (lower fd = opened earlier = likely Deck A).
+    """
+    try:
+        pid = subprocess.check_output(
+            ["pgrep", "-x", TRAKTOR_PROC], text=True
+        ).strip().split()[0]
+    except Exception:
+        return []
+    try:
+        out = subprocess.check_output(
+            ["lsof", "-p", pid], text=True, stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        return []
+    results = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 9:
+            continue
+        fd_raw = parts[3]   # e.g. "24r"
+        path   = " ".join(parts[8:])
+        if Path(path).suffix.lower() not in AUDIO_EXTS:
+            continue
+        try:
+            fd = int("".join(c for c in fd_raw if c.isdigit()))
+        except ValueError:
+            fd = 9999
+        results.append((fd, path))
+    results.sort()   # ascending fd → Deck A first
+    return results
+
+
+def start_lsof_watcher(
+    tracks: list,
+    index: dict,
+    osc_state,
+    interval: float = 1.5,
+) -> None:
+    """
+    Poll lsof every `interval` seconds.  When Traktor opens a new audio file,
+    resolve it against our collection and push deck suggestions via SSE.
+
+    Deck assignment: lower file-descriptor number → Deck A, higher → Deck B.
+    This matches Traktor's load order in practice.
+    """
+    # path → deck letter we assigned it
+    deck_map: dict[str, str] = {}
+
+    def _resolve(fpath: str):
+        track = index.get(fpath)
+        if track is None:
+            bn    = Path(fpath).name
+            track = next((t for t in tracks if Path(t.path).name == bn), None)
+        return track
+
+    def _loop():
+        nonlocal deck_map
+
+        # Bootstrap: treat all currently-open files as already known so we
+        # don't spam suggestions for tracks already sitting in the decks.
+        # But DO push them once so the browser deck cards populate.
+        boot = _traktor_open_audio()
+        deck_slots = ["a", "b"]
+        for i, (_, fpath) in enumerate(boot[:2]):
+            d = deck_slots[i] if i < len(deck_slots) else "a"
+            deck_map[fpath] = d
+            _mark_played(fpath)
+            track = _resolve(fpath)
+            if track:
+                osc_state.push_track(track, d)
+                try:
+                    s2  = suggest_slot2(track, tracks)
+                    ref = index.get(s2[0]["path"]) if s2 else track
+                    s3  = suggest_slot3(ref, track, tracks)
+                    print_suggestions(d, track, s2, s3)
+                except Exception:
+                    pass
+
+        while True:
+            time.sleep(interval)
+            current_list = _traktor_open_audio()
+            current_paths = {p for _, p in current_list}
+            prev_paths    = set(deck_map.keys())
+            new_files     = current_paths - prev_paths
+            gone_files    = prev_paths    - current_paths
+
+            if not new_files:
+                continue
+
+            # Reclaim deck slots freed by closed files
+            freed_decks = [deck_map.pop(fp) for fp in gone_files if fp in deck_map]
+            freed_decks.sort()   # "a" before "b"
+
+            # Assign new files: reuse freed slots first, then by fd order
+            new_sorted = [(fd, p) for fd, p in current_list if p in new_files]
+            new_sorted.sort()
+
+            for i, (_, fpath) in enumerate(new_sorted):
+                if freed_decks:
+                    d = freed_decks.pop(0)
+                elif len(deck_map) == 0:
+                    d = "a"
+                else:
+                    existing = set(deck_map.values())
+                    d = "b" if "a" in existing else "a"
+                deck_map[fpath] = d
+
+                track = _resolve(fpath)
+                if not track:
+                    continue
+
+                _mark_played(fpath)
+                osc_state.push_track(track, d)
+                try:
+                    s2  = suggest_slot2(track, tracks)
+                    ref = index.get(s2[0]["path"]) if s2 else track
+                    s3  = suggest_slot3(ref, track, tracks)
+                    print_suggestions(d, track, s2, s3)
+                except Exception:
+                    pass
+
+    t = threading.Thread(target=_loop, daemon=True, name="lsof-watcher")
+    t.start()
+
+
 # ── OSC state ─────────────────────────────────────────────────────────────────
 
 class OSCState:
     """Thread-safe buffer for Traktor OSC deck events."""
     def __init__(self):
-        self._lock     = threading.Lock()
-        self._pending  = {}   # deck → {title, artist}
-        self._sse_qs   = []   # SSE client queues
+        self._lock    = threading.Lock()
+        self._pending = {}        # deck → {title, artist}  (accumulates until both arrive)
+        self._loaded  = {}        # deck → {title, artist}  (last fully-loaded track)
+        self._playing = {}        # deck → bool
+        self._sse_qs  = []        # SSE client queues
+
+    def _push(self, event: dict) -> None:
+        """Send an event to all connected SSE clients (must hold lock)."""
+        for q in list(self._sse_qs):
+            try: q.put_nowait(event)
+            except: pass
 
     def on_message(self, deck: str, field: str, value: str):
         with self._lock:
+            # ── Play-state change ─────────────────────────────────────────────
+            if field == "play":
+                playing = (str(value).strip() in ("1", "1.0", "True", "true"))
+                was_playing = self._playing.get(deck, False)
+                self._playing[deck] = playing
+                # Fire play_state event so browser can show ▶ on the right deck
+                self._push({"type": "play_state", "deck": deck, "playing": playing})
+                # When a deck starts playing (0→1) and we have its loaded track,
+                # fire a track event so suggestions auto-update for the live deck
+                if playing and not was_playing and deck in self._loaded:
+                    info = self._loaded[deck]
+                    self._push({"deck": deck,
+                                "title": info["title"],
+                                "artist": info["artist"],
+                                "type": "playing"})
+                return
+
+            # ── Track load (title + artist accumulate) ────────────────────────
             p = self._pending.setdefault(deck, {})
             p[field] = value.strip()
             if "title" in p and "artist" in p:
-                event = {"deck": deck, "title": p["title"], "artist": p["artist"]}
-                for q in list(self._sse_qs):
-                    try: q.put_nowait(event)
-                    except: pass
-                self._pending[deck] = {}   # reset after firing
+                info  = {"title": p["title"], "artist": p["artist"]}
+                self._loaded[deck] = info
+                self._pending[deck] = {}
+                self._push({"deck": deck, "title": info["title"],
+                            "artist": info["artist"], "type": "loaded"})
+
+    def playing_deck(self) -> str | None:
+        """Return the deck letter currently playing, or None."""
+        with self._lock:
+            for deck, playing in self._playing.items():
+                if playing:
+                    return deck
+        return None
+
+    def get_loaded(self) -> dict:
+        """Return a copy of loaded deck state: {deck: {title, artist}}."""
+        with self._lock:
+            return dict(self._loaded)
+
+    def get_playing(self) -> dict:
+        """Return a copy of play state: {deck: bool}."""
+        with self._lock:
+            return dict(self._playing)
+
+    def push_track(self, track, deck: str | None) -> None:
+        """Called by lsof watcher when a new track is detected in Traktor."""
+        with self._lock:
+            info = {"title": track.title, "artist": track.artist}
+            if deck:
+                self._loaded[deck] = info
+            self._push({
+                "type":   "loaded",
+                "deck":   deck or "a",
+                "title":  track.title,
+                "artist": track.artist,
+            })
+
+    def swap_decks(self) -> None:
+        """Swap deck A ↔ B assignments and notify all SSE clients."""
+        with self._lock:
+            a = self._loaded.get("a")
+            b = self._loaded.get("b")
+            if a: self._loaded["b"] = a
+            if b: self._loaded["a"] = b
+            elif a: del self._loaded["b"]
+            # Notify browser to re-render both deck cards
+            if a: self._push({"type": "loaded", "deck": "b",
+                               "title": a["title"], "artist": a["artist"]})
+            if b: self._push({"type": "loaded", "deck": "a",
+                               "title": b["title"], "artist": b["artist"]})
 
     def add_client(self, q):
         with self._lock: self._sse_qs.append(q)
@@ -617,14 +902,24 @@ HTML = r"""<!DOCTYPE html>
 body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column}
 #hdr{background:#0d0d1a;padding:10px 18px;border-bottom:2px solid #e63946;display:flex;align-items:center;gap:16px;flex-shrink:0}
 #hdr h1{color:#e63946;font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
-#hdr small{color:#444;font-size:11px}
+#hdr small{color:#888;font-size:11px}
 #osc-status{font-size:10px;padding:3px 8px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
 #osc-status.on{background:#14532d;color:#4ade80}
 #osc-status.off{background:#1e293b;color:#555}
 #deck-bar{background:#0a0a0a;border-bottom:1px solid #1a1a1a;padding:6px 18px;display:flex;gap:12px;align-items:center;flex-shrink:0;min-height:34px}
 .deck-pill{font-size:10px;padding:3px 10px;border-radius:12px;letter-spacing:1px;text-transform:uppercase;border:1px solid #222;color:#444}
-.deck-pill.live{border-color:#e63946;color:#e63946;background:#1a0808}
+.deck-pill.loaded{border-color:#555;color:#888;background:#1a1a1a}
+.deck-pill.playing{border-color:#e63946;color:#e63946;background:#1a0808;box-shadow:0 0 6px #e6394644}
 #deck-msg{color:#555;font-size:11px;flex:1}
+#swap-btn{background:#1a1a1a;color:#777;border:1px solid #333;padding:3px 10px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:1px}
+#swap-btn:hover{border-color:#888;color:#ccc;background:#222}
+.panic-btn{border:none;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;transition:opacity .1s}
+#save-btn{background:#7f1d1d;color:#fca5a5}#save-btn:hover{background:#991b1b}
+#surprise-btn{background:#1e3a5f;color:#93c5fd}#surprise-btn:hover{background:#1d4ed8}
+#rescue-box{background:#111;border:1px solid #333;border-radius:4px;padding:10px 14px;margin:8px 18px;display:none}
+#rescue-box .r-label{font-size:9px;letter-spacing:2px;color:#666;margin-bottom:5px;text-transform:uppercase}
+#rescue-box .r-track{font-size:13px;cursor:pointer}
+#rescue-box .r-track .ra{color:#ccc}#rescue-box .r-track .rt{color:#fff;font-weight:bold}
 #search-wrap{background:#161616;border-bottom:1px solid #222;padding:8px 18px;flex-shrink:0;position:relative}
 #q{width:100%;background:#1e1e1e;color:#eee;border:1px solid #333;padding:8px 13px;font-size:14px;font-family:inherit;border-radius:3px}
 #q:focus{outline:none;border-color:#e63946}
@@ -644,9 +939,14 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .tk{padding:9px 10px;margin-bottom:5px;border-radius:3px;cursor:pointer;border:1px solid #1e1e1e}
 .tk:hover{border-color:#444;background:#181818}
 .tk.sel{border-color:#f4a261;background:#1a1000}
-.tk .tn{margin-bottom:4px}.tk .ta{color:#999}.tk .tt{color:#fff}
+.tk .tn{margin-bottom:4px}.tk .ta{color:#ccc}.tk .tt{color:#fff}
 .meta{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;margin-top:3px}
-.bpm{color:#f4a261}.key{color:#a8dadc}.gen{color:#666}.scr{color:#4a9}.sts{color:#ffd700;letter-spacing:-1px}
+.bpm{color:#f4a261}.key{color:#a8dadc}.gen{color:#aaa}.scr{color:#4a9}.sts{color:#ffd700;letter-spacing:-1px}
+.rep-convicted{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#450a0a;color:#f87171;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
+.rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
+.rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
+.lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
+.lyric-summary{font-size:11px;color:#555;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
 .tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
@@ -654,11 +954,30 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .tx-efx{background:#7f1d1d;color:#f87171}.tx-cut{background:#1e293b;color:#94a3b8}
 .bg{margin-bottom:12px}
 .bg-dest{font-size:10px;color:#4cc9f0;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid #4cc9f0}
-.empty{color:#333;padding:16px;font-size:12px;text-align:center;line-height:1.8}
+.empty{color:#666;padding:16px;font-size:12px;text-align:center;line-height:1.8}
+.deck-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid #1e1e1e;background:#141414;transition:border-color .15s}
+.dc:hover{border-color:#444;background:#1a1a1a}
+.dc.dc-idle{border-color:#2a2a2a;color:#777}
+.dc.dc-loaded{border-color:#444;background:#161616}
+.dc.dc-playing{border-color:#e63946;background:#1a0808;box-shadow:0 0 8px #e6394633}
+.dc .dc-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;color:#777}
+.dc.dc-loaded .dc-label{color:#999}
+.dc.dc-playing .dc-label{color:#e63946}
+.dc .dc-name{font-size:12px;line-height:1.4}
+.dc .dc-artist{color:#ccc}
+.dc .dc-title{color:#fff}
+.dc .dc-sep{color:#555}
+.dc .dc-meta{font-size:10px;color:#888;margin-top:3px}
+.dc.dc-loaded .dc-meta{color:#aaa}
+.dc .dc-empty{color:#777;font-size:11px;font-style:italic}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;color:#ccc;border:1px solid #444;padding:6px 16px;border-radius:4px;font-size:11px;letter-spacing:1px;opacity:0;transition:opacity .15s;pointer-events:none;z-index:999}
+#toast.show{opacity:1}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#2a2a2a}
 </style>
 </head>
 <body>
+<div id="toast"></div>
 <div id="hdr">
   <h1>♪ DJ Block Planner</h1>
   <small id="tc">loading…</small>
@@ -667,7 +986,15 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 <div id="deck-bar">
   <span class="deck-pill" id="pill-a">DECK A</span>
   <span class="deck-pill" id="pill-b">DECK B</span>
+  <button id="swap-btn" onclick="swapDecks()" title="Swap Deck A ↔ B assignments">⇄ Swap</button>
   <span id="deck-msg">Waiting for Traktor… or search below</span>
+  <button class="panic-btn" id="save-btn" onclick="rescueMe('save')" title="Best rated floor track near current BPM/genre">🚨 Save Me</button>
+  <button class="panic-btn" id="surprise-btn" onclick="rescueMe('surprise')" title="Highly rated track you haven't played tonight">✨ Surprise Me</button>
+</div>
+<div id="rescue-box">
+  <div class="r-label" id="rescue-label">SAVE ME</div>
+  <div class="r-track" id="rescue-track" onclick="rescueCopy()"></div>
+  <div class="meta" id="rescue-meta" style="margin-top:6px"></div>
 </div>
 <div id="search-wrap">
   <input id="q" type="text" placeholder="Manual search — artist or title…" autocomplete="off" spellcheck="false">
@@ -689,6 +1016,10 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 </div>
 <script>
 let SR=[],S2=[],anchor=null,slot2=null,oscActive=false;
+// Per-deck resolved track objects (or null if empty / not found in collection)
+let deckTracks={a:null,b:null};
+let deckPlaying={a:false,b:false};
+
 const q=document.getElementById('q'),
       res=document.getElementById('results'),
       b1=document.getElementById('b1'),
@@ -700,7 +1031,7 @@ const q=document.getElementById('q'),
       pillB=document.getElementById('pill-b');
 
 fetch('/api/count').then(r=>r.json()).then(d=>{
-  document.getElementById('tc').textContent=d.count+' tracks · offline';
+  document.getElementById('tc').textContent=d.count+' tracks';
   if(d.osc) setOscOn();
 });
 
@@ -718,6 +1049,24 @@ function txBadge(t){
   if(!t.transition)return'';
   return`<span class="tx tx-${TX_CLASS[t.transition]||'cut'}">${t.transition}</span>`;
 }
+function repBadge(t){
+  if(!t.rep_tier)return'';
+  const cls=`rep-${t.rep_tier}`;
+  const icon=t.rep_tier==='convicted'?'🔴 CONVICTED':t.rep_tier==='settled'?'🟢 SETTLED':'⚠ ACCUSED';
+  const tip=esc(t.rep_summary||'');
+  return`<span class="${cls}" title="${tip}">${icon}</span>`;
+}
+function lyricBadges(t){
+  if(!t.lyric_flags||!t.lyric_flags.length)return'';
+  const labels={racism:'🚫 RACIST LYRICS',bigotry:'🚫 BIGOTED LYRICS',
+    sexual_violence:'🚫 SEXUAL VIOLENCE',child_abuse:'🚫 CHILD ABUSE',
+    extreme_violence:'🚫 EXTREME VIOLENCE'};
+  return t.lyric_flags.map(f=>`<span class="lyric-flag" title="Lyric content warning">${labels[f]||'🚫 FLAGGED'}</span>`).join('');
+}
+function lyricLine(t){
+  if(!t.lyric_summary)return'';
+  return`<div class="lyric-summary" title="${esc(t.lyric_summary)}">${esc(t.lyric_summary)}</div>`;
+}
 function meta(t,showScore){
   return`<div class="meta">
     <span class="bpm">${t.bpm} BPM</span><span class="key">${t.key||'—'}</span>
@@ -725,35 +1074,160 @@ function meta(t,showScore){
     ${showScore?`<span class="scr">${t.score}%</span>`:''}${txBadge(t)}</div>`;
 }
 function tkHtml(t,idx,sel,showScore){
-  return`<div class="tk${sel?' sel':''}" id="s2-${idx}" onclick="pickSlot2(${idx})">
-    <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#333"> — </span><span class="tt">${esc(t.title)}</span></div>
-    ${meta(t,showScore)}</div>`;
+  return`<div class="tk${sel?' sel':''}" id="s2-${idx}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+    <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+    ${lyricLine(t)}${meta(t,showScore)}</div>`;
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+let _toastTimer;
+function copyTrack(artist,title){
+  const text=`${artist} ${title}`;
+  navigator.clipboard.writeText(text).catch(()=>{});
+  const t=document.getElementById('toast');
+  t.textContent='📋 '+text;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+// ── Deck cards ──────────────────────────────────────────────────────────────
+function dcCardHtml(deck){
+  const t=deckTracks[deck];
+  const playing=deckPlaying[deck];
+  const cls=t?(playing?'dc dc-playing':'dc dc-loaded'):'dc dc-idle';
+  const label=`DECK ${deck.toUpperCase()}${playing?' ▶':''}`;
+  const body=t
+    ? `<div class="dc-name"><span class="dc-artist">${esc(t.artist)}</span><span class="dc-sep"> — </span><span class="dc-title">${esc(t.title)}</span></div>
+       <div class="dc-meta">${t.bpm} BPM · ${t.key||'—'} · ${t.genre||'—'}</div>`
+    : `<div class="dc-empty">Nothing loaded</div>`;
+  const click=t?`onclick="setDeckAnchor('${deck}')"`:'' ;
+  return`<div class="${cls}" ${click}><div class="dc-label">${label}</div>${body}</div>`;
+}
+
+function renderDeckCards(){
+  // Only show deck cards section if b1 has an anchor-box (otherwise just show them standalone)
+  const existing=b1.querySelector('.deck-cards');
+  const html=`<div class="deck-cards">${dcCardHtml('a')}${dcCardHtml('b')}</div>`;
+  if(existing){
+    existing.outerHTML=html;
+  } else {
+    // Append after anchor-box or as the only content if empty
+    const ab=b1.querySelector('.anchor-box');
+    if(ab) ab.insertAdjacentHTML('afterend',html);
+    else b1.innerHTML=`<div class="empty">Load a track in Traktor<br>— or search above.</div>`+html;
+  }
+}
+
+let _rescueTrack=null;
+async function rescueMe(mode){
+  const anchorParam=anchor?'&anchor='+encodeURIComponent(anchor.path):'';
+  const url=mode==='save'?`/api/save-me?${anchorParam.slice(1)}`:`/api/surprise-me`;
+  const t=await fetch(url).then(r=>r.json());
+  if(t.error){alert('No candidates found.');return}
+  _rescueTrack=t;
+  // Load as anchor — fires full suggestion pipeline just like a search pick or deck load
+  await loadAnchor(t, null);
+  // Flash the rescue label briefly so the Captain knows which button fired it
+  const box=document.getElementById('rescue-box');
+  document.getElementById('rescue-label').textContent=mode==='save'?'🚨 SAVE ME — loaded as anchor':'✨ SURPRISE ME — loaded as anchor';
+  document.getElementById('rescue-track').innerHTML=
+    `<span class="ra">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="rt">${esc(t.title)}</span>`;
+  document.getElementById('rescue-meta').innerHTML=
+    `<span class="bpm">${t.bpm} BPM</span><span class="key">${t.key||'—'}</span><span class="gen">${t.genre||'—'}</span>${stars(t.stars)}<span class="scr">${t.score}%</span>`;
+  box.style.display='block';
+  copyTrack(t.artist,t.title);
+}
+function rescueCopy(){
+  if(_rescueTrack) copyTrack(_rescueTrack.artist,_rescueTrack.title);
+}
+
+async function swapDecks(){
+  await fetch('/api/swap-decks',{method:'POST'});
+  // Also swap local state
+  [deckTracks.a, deckTracks.b] = [deckTracks.b, deckTracks.a];
+  [deckPlaying.a, deckPlaying.b] = [deckPlaying.b, deckPlaying.a];
+  renderDeckCards();
+}
+
+async function setDeckAnchor(deck){
+  const t=deckTracks[deck];
+  if(!t)return;
+  await loadAnchor(t,deck);
+}
 
 // ── SSE — auto-detect from Traktor ─────────────────────────────────────────
 function connectSSE(){
   const es=new EventSource('/api/events');
   es.onmessage=e=>{
     const d=JSON.parse(e.data);
-    if(d.type==='connected'){setOscOn();return}
-    if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist);
+    if(d.type==='connected'){
+      setOscOn();
+      // Restore deck state after reconnect
+      restoreDeckStatus();
+      return;
+    }
+    if(d.type==='play_state'){deckPlayState(d.deck,d.playing);return}
+    if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist,d.type==='playing');
   };
-  es.onerror=()=>{setTimeout(connectSSE,3000)};
+  es.onerror=()=>{
+    oscEl.textContent='SSE…';oscEl.className='off';
+    setTimeout(connectSSE,3000);
+  };
 }
 connectSSE();
 
-async function deckLoaded(deck,title,artist){
-  // Highlight the active deck pill
-  pillA.className='deck-pill'+(deck==='a'?' live':'');
-  pillB.className='deck-pill'+(deck==='b'?' live':'');
-  deckMsg.textContent=`Deck ${deck.toUpperCase()} loaded: ${artist} — ${title}`;
+async function restoreDeckStatus(){
+  try{
+    const s=await fetch('/api/deck-status').then(r=>r.json());
+    if(s.a) await _resolveAndStoreDeck('a',s.a.title,s.a.artist);
+    if(s.b) await _resolveAndStoreDeck('b',s.b.title,s.b.artist);
+    if(s.playing_a){deckPlaying.a=true;pillA.className='deck-pill playing';}
+    else if(s.a){pillA.className='deck-pill loaded';}
+    if(s.playing_b){deckPlaying.b=true;pillB.className='deck-pill playing';}
+    else if(s.b){pillB.className='deck-pill loaded';}
+    renderDeckCards();
+  }catch(err){}
+}
+
+async function _resolveAndStoreDeck(deck,title,artist){
+  const r=await fetch(`/api/resolve-deck?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`).then(r=>r.json());
+  deckTracks[deck]=r||{artist,title,bpm:'?',key:'',genre:'',stars:0,path:''};
+}
+
+function deckPlayState(deck,playing){
+  deckPlaying[deck]=playing;
+  const pill=deck==='a'?pillA:pillB;
+  const other=deck==='a'?pillB:pillA;
+  const otherDeck=deck==='a'?'b':'a';
+  if(playing){
+    pill.className='deck-pill playing';
+    if(deckPlaying[otherDeck]){deckPlaying[otherDeck]=false;other.className='deck-pill loaded';}
+  } else {
+    if(pill.className.includes('playing')) pill.className=deckTracks[deck]?'deck-pill loaded':'deck-pill';
+  }
+  renderDeckCards();
+}
+
+async function deckLoaded(deck,title,artist,isPlaying=false){
+  const pill=deck==='a'?pillA:pillB;
+  if(!pill.className.includes('playing')) pill.className='deck-pill loaded';
+  deckMsg.textContent=`Deck ${deck.toUpperCase()} ${isPlaying?'▶':'→'} ${artist} — ${title}`;
 
   const r=await fetch(`/api/resolve-deck?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`).then(r=>r.json());
+  deckTracks[deck]=r||{artist,title,bpm:'?',key:'',genre:'',stars:0,path:''};
+  renderDeckCards();
+
   if(r){
-    SR=[r]; await loadAnchor(r,deck);
+    SR=[r];
+    await loadAnchor(r,deck);
   } else {
-    b1.innerHTML=`<div class="empty" style="color:#666">Deck ${deck.toUpperCase()}: <b style="color:#aaa">${esc(artist)} — ${esc(title)}</b><br><span style="color:#444">Not in collection</span></div>`;
+    // Track not in collection — update anchor area but keep deck cards
+    const ab=b1.querySelector('.anchor-box');
+    const cardsEl=b1.querySelector('.deck-cards');
+    const notFound=`<div class="empty" style="color:#777">Deck ${deck.toUpperCase()}: <b style="color:#bbb">${esc(artist)} — ${esc(title)}</b><br><span style="color:#555">Not in collection</span></div>`;
+    if(ab) ab.outerHTML=notFound; else if(!cardsEl) b1.innerHTML=notFound;
+    if(cardsEl) renderDeckCards();
     b2.innerHTML='<div class="empty">—</div>';
     b3.innerHTML='<div class="empty">—</div>';
   }
@@ -773,8 +1247,8 @@ async function doSearch(v){
   if(!d.length){res.style.display='none';return}
   SR=d;
   res.innerHTML=d.map((t,i)=>`
-    <div class="r" onclick="setAnchor(${i})">
-      <span style="flex:1"><span class="ra">${esc(t.artist)}</span><span style="color:#444"> — </span><span style="color:#fff">${esc(t.title)}</span></span>
+    <div class="r" onclick="setAnchor(${i});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+      <span style="flex:1"><span class="ra">${esc(t.artist)}</span><span style="color:#555"> — </span><span style="color:#fff">${esc(t.title)}</span></span>
       <span class="bpm">${t.bpm}</span><span class="key">${t.key||'—'}</span>
       <span class="gen" style="min-width:100px">${t.genre||'—'}</span>${stars(t.stars)}
     </div>`).join('');
@@ -786,9 +1260,20 @@ async function setAnchor(i){res.style.display='none';q.value='';await loadAnchor
 async function loadAnchor(track,deck){
   anchor=track;
   const deckTag=deck?`<div class="deck-tag">DECK ${deck.toUpperCase()} ▶ NOW PLAYING</div>`:'';
-  b1.innerHTML=`<div class="anchor-box">${deckTag}
+  // Replace anchor box only; keep deck cards
+  const cardsEl=b1.querySelector('.deck-cards');
+  const anchorHtml=`<div class="anchor-box">${deckTag}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
     ${meta(track,false)}</div>`;
+  if(cardsEl){
+    const ab=b1.querySelector('.anchor-box');
+    if(ab) ab.outerHTML=anchorHtml;
+    else b1.insertAdjacentHTML('afterbegin',anchorHtml);
+    renderDeckCards();
+  } else {
+    b1.innerHTML=anchorHtml;
+    renderDeckCards();
+  }
   b2.innerHTML='<div class="empty">Loading…</div>';
   b3.innerHTML='<div class="empty">Loading…</div>';
   const deckParam=deck?'&deck='+encodeURIComponent(deck):'';
@@ -816,9 +1301,9 @@ function renderSlot3(groups){
   if(!groups.length){b3.innerHTML='<div class="empty">No bridge candidates</div>';return}
   b3.innerHTML=groups.map(g=>`
     <div class="bg"><div class="bg-dest">→ ${esc(g.destination)}</div>
-    ${g.tracks.map(t=>`<div class="tk">
-      <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#333"> — </span><span class="tt">${esc(t.title)}</span></div>
-      ${meta(t,true)}</div>`).join('')}</div>`).join('');
+    ${g.tracks.map(t=>`<div class="tk" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+      <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+      ${lyricLine(t)}${meta(t,true)}</div>`).join('')}</div>`).join('');
 }
 </script>
 </body>
@@ -837,7 +1322,82 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
 
     @app.route("/api/count")
     def count():
-        return jsonify({"count": len(tracks), "osc": osc_on})
+        return jsonify({"count": len(tracks), "osc": osc_on,
+                        "playing_deck": osc_state.playing_deck()})
+
+    @app.route("/api/now-playing")
+    def now_playing():
+        deck = osc_state.playing_deck()
+        return jsonify({"deck": deck})
+
+    @app.route("/api/save-me")
+    def save_me():
+        """
+        Return the single highest-rated floor track closest to the current anchor.
+        Prefers same/neighbouring genre and tight BPM match. Guaranteed dancefloor.
+        """
+        import random
+        anchor_path = request.args.get("anchor", "")
+        anchor = index.get(anchor_path)
+
+        def score(t: Track) -> float:
+            if t.stars < 3: return -1
+            if t.genre not in FLOOR_GENRES and anchor is None: return -1
+            star_w = t.stars / 5.0
+            bpm_w  = bpm_compat(anchor.bpm, t.bpm)  if anchor else 0.5
+            gen_w  = genre_compat(anchor.genre, t.genre) if anchor else (
+                     1.0 if t.genre in FLOOR_GENRES else 0.0)
+            return 0.4 * star_w + 0.35 * bpm_w + 0.25 * gen_w
+
+        candidates = sorted(
+            [(score(t), t) for t in tracks if score(t) > 0],
+            key=lambda x: -x[0]
+        )
+        if not candidates:
+            return jsonify({"error": "no candidates"}), 404
+        # Pick best from top-5 (slight randomness so it's not always identical)
+        pick_score, pick = random.choice(candidates[:5])
+        return jsonify(pick.to_dict(pick_score))
+
+    @app.route("/api/surprise-me")
+    def surprise_me():
+        """
+        Return a highly-rated floor track NOT played this session.
+        Random pick from top 20 so it's actually surprising.
+        """
+        import random
+        played = _get_played()
+
+        def score(t: Track) -> float:
+            if t.path in played: return -1
+            if t.stars < 3:     return -1
+            if t.genre not in FLOOR_GENRES: return -1
+            return t.stars / 5.0 + random.random() * 0.15   # shuffle within tier
+
+        candidates = sorted(
+            [(score(t), t) for t in tracks if score(t) > 0],
+            key=lambda x: -x[0]
+        )
+        if not candidates:
+            return jsonify({"error": "no unplayed candidates"}), 404
+        pick_score, pick = random.choice(candidates[:20])
+        return jsonify(pick.to_dict(pick_score))
+
+    @app.route("/api/swap-decks", methods=["POST"])
+    def swap_decks():
+        osc_state.swap_decks()
+        return jsonify({"ok": True})
+
+    @app.route("/api/deck-status")
+    def deck_status():
+        loaded  = osc_state.get_loaded()   # {deck: {title, artist}}
+        playing = osc_state.get_playing()  # {deck: bool}
+        return jsonify({
+            "a": loaded.get("a"),
+            "b": loaded.get("b"),
+            "playing_a": playing.get("a", False),
+            "playing_b": playing.get("b", False),
+        })
 
     @app.route("/api/search")
     def search():
@@ -891,6 +1451,77 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
                 best_score, best = score, t
         return jsonify(best.to_dict() if best else None)
 
+    @app.route("/api/reload-lyrics", methods=["POST"])
+    def reload_lyrics():
+        """Hot-reload lyrics index without server restart. Call after running stage9_lyrics.py."""
+        global LYRICS
+        LYRICS = load_lyrics_index(LYRICS_INDEX)
+        return jsonify({"loaded": len(LYRICS), "flagged": sum(1 for v in LYRICS.values() if v.get("flags"))})
+
+    @app.route("/api/activity")
+    def activity():
+        """Return current background task progress, or null if idle."""
+        if ACTIVITY_FILE.exists():
+            try:
+                return jsonify(json.loads(ACTIVITY_FILE.read_text()))
+            except Exception:
+                pass
+        return jsonify(None)
+
+    @app.route("/api/lyrics-batch")
+    def lyrics_batch():
+        """
+        Serve the current lyrics batch export for the analysis PC to pull.
+        The PC hits this endpoint, processes with its powerful model,
+        then POSTs results to /api/lyrics-results.
+        """
+        batch_file = BASE / "state" / "lyrics_batch_export.json"
+        if not batch_file.exists():
+            return jsonify({"error": "No batch file. Run export_lyrics_for_analysis.py first."}), 404
+        return jsonify(json.loads(batch_file.read_text()))
+
+    @app.route("/api/lyrics-results", methods=["POST"])
+    def lyrics_results():
+        """
+        Receive analysis results from the PC.
+        Body: {"dkey": {"summary": "...", "flags": [...]}, ...}
+        Merges into dedup cache and index, then hot-reloads.
+        """
+        global LYRICS
+        import re
+
+        def base_title(t):
+            return re.sub(r'\s*[\(\[].{0,40}[\)\]]\s*$', "", t).strip().lower()
+        def dedup_key(a, t):
+            return f"{a.lower().strip()}\t{base_title(t)}"
+
+        results = request.get_json(force=True) or {}
+        dedup_file = BASE / "state" / "lyrics_dedup.json"
+        dedup = json.loads(dedup_file.read_text()) if dedup_file.exists() else {}
+        index_file = BASE / "state" / "lyrics_index.json"
+        index = json.loads(index_file.read_text()) if index_file.exists() else {}
+
+        merged = flagged = 0
+        for dkey, entry in results.items():
+            if not entry.get("summary"):
+                continue
+            dedup[dkey] = {"summary": entry["summary"], "flags": entry.get("flags", [])}
+            if entry.get("flags"):
+                flagged += 1
+            merged += 1
+
+        # Propagate dkey → path mappings through the in-memory track list
+        for t in tracks:
+            dk = dedup_key(t.artist, t.title)
+            if t.path not in index and dk in dedup:
+                index[t.path] = dedup[dk]
+
+        dedup_file.write_text(json.dumps(dedup, ensure_ascii=False))
+        index_file.write_text(json.dumps(index, ensure_ascii=False))
+        LYRICS = load_lyrics_index(index_file)
+
+        return jsonify({"merged": merged, "flagged": flagged, "total_indexed": len(index)})
+
     @app.route("/api/events")
     def events():
         q = queue.Queue()
@@ -943,6 +1574,12 @@ def main():
     print(f"    Ctrl+2 → Deck B → Load Selected Track\n")
 
     app   = make_app(tracks, osc_state, osc_on)
+
+    # ── lsof deck watcher — detects Traktor track loads automatically ─────────
+    index = {t.path: t for t in tracks}
+    start_lsof_watcher(tracks, index, osc_state)
+    print(f"  Deck watcher: polling Traktor every 1.5s via lsof")
+
     flask_thread = threading.Thread(
         target=lambda: app.run(host="127.0.0.1", port=PORT,
                                debug=False, use_reloader=False, threaded=True),

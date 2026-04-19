@@ -1,0 +1,243 @@
+{
+  "_notes": [
+    "Curated by Captain Aaron Rhodes.",
+    "Sources: r/goth wiki, community research, verified press reports.",
+    "tier: 'convicted' = legal conviction on record (shows RED in browser)",
+    "tier: 'accused'   = credible allegation, no conviction or acquitted (shows YELLOW)",
+    "tier: 'settled'   = investigated/accused but closed with apology/no charges, community largely moved on (shows GREEN)",
+    "artists[]  = primary artist names OR band names this person records/recorded under",
+    "members[]  = bands whose tracks may include this person as member/collaborator",
+    "summary    = one-line note shown as tooltip at the DJ booth",
+    "song_flags = individual songs flagged (not whole artist) — handled separately in UI",
+    "Add/remove/edit freely. Server reloads on restart."
+  ],
+  "flags": [
+
+    {"name": "Ian Watkins",
+     "artists": ["Lostprophets", "Ian Watkins"], "members": [],
+     "tier": "convicted",
+     "summary": "Convicted 2013 — multiple child sexual abuse charges"},
+
+    {"name": "Varg Vikernes",
+     "artists": ["Burzum", "Varg Vikernes"], "members": ["Mayhem"],
+     "tier": "convicted",
+     "summary": "Convicted 1994 — murder of Euronymous + arson of multiple churches"},
+
+    {"name": "Bård Eithun",
+     "artists": ["Faust"], "members": ["Emperor"],
+     "tier": "convicted",
+     "summary": "Convicted 1994 — murder (Lillehammer homophobic attack)"},
+
+    {"name": "Dustan Sheehan",
+     "artists": ["Stellar Corpses"], "members": [],
+     "tier": "convicted",
+     "summary": "Convicted — CP possession and attempted grooming of a minor (Batcave Records)"},
+
+    {"name": "Tobias Francis",
+     "artists": ["Soft Kill"], "members": [],
+     "tier": "convicted",
+     "summary": "Convicted — domestic battery (2020s); frontman of Soft Kill"},
+
+    {"name": "Michel Rowlands",
+     "artists": ["Disjecta Membra"], "members": [],
+     "tier": "convicted",
+     "summary": "Band member convicted of rape — confirmed via band's own public statement"},
+
+    {"name": "Till Lindemann",
+     "artists": ["Rammstein", "Till Lindemann"], "members": [],
+     "tier": "settled",
+     "summary": "2023 allegations of systematic sexual exploitation at shows; German prosecutors closed Aug 2023 — insufficient evidence; Lindemann sued Der Spiegel over reporting"},
+
+    {"name": "Alison Moyet",
+     "artists": ["Yazoo", "Yaz", "Alison Moyet"], "members": [],
+     "tier": "settled",
+     "summary": "Signed anti-trans letter attacking LGBT+ charity Stonewall, later withdrew support"},
+
+    {"name": "Drab Majesty",
+     "artists": ["Drab Majesty"], "members": [],
+     "tier": "settled",
+     "summary": "Multiple racist tweets; issued repeated apologies and donated to charity — widely accepted by the scene"},
+
+    {"name": "Siouxsie Sioux",
+     "artists": ["Siouxsie and the Banshees", "Siouxsie Sioux", "The Creatures"], "members": [],
+     "tier": "settled",
+     "summary": "Wore swastika armband on stage (1970s punk provocation); apologised; also see individual song flags for Arabian Nights, Hong Kong Garden"},
+
+    {"name": "Marilyn Manson",
+     "artists": ["Marilyn Manson"], "members": [],
+     "tier": "accused",
+     "summary": "Multiple named accusers alleged sexual/psychological abuse (2021); Esmé Bianco civil suit settled 2023; LA DA closed criminal investigation Jan 2025 — statute of limitations"},
+
+    {"name": "Richard Ramirez (noise)",
+     "artists": ["Richard Ramirez"], "members": [],
+     "tier": "accused",
+     "summary": "Noise artist — name overlap with Night Stalker serial killer; flagged for DJ awareness only, not a legal matter"},
+
+    {"name": "Boyd Rice",
+     "artists": ["NON", "Boyd Rice"], "members": ["Death in June"],
+     "tier": "accused",
+     "summary": "1986 on-camera appearance on white supremacist TV promoting Aryan music agenda; photographed with neo-Nazi organizers; denies ideology, claims artistic provocation"},
+
+    {"name": "Douglas Pearce",
+     "artists": ["Death in June"], "members": [],
+     "tier": "accused",
+     "summary": "Sustained Nazi-era imagery; expressed 'Eurocentric Racialism' in interviews; SPLC classifies as white power music; Pearce disputes Nazi label"},
+
+    {"name": "Mr. Kitty",
+     "artists": ["Mr. Kitty"], "members": [],
+     "tier": "accused",
+     "summary": "Publicly admitted 2021 to sending explicit sexual content to a 15-year-old fan over 4 months in 2019; no criminal charges filed; returned to performing 2024"},
+
+    {"name": "And One",
+     "artists": ["And One"], "members": [],
+     "tier": "accused",
+     "summary": "Official accounts posted QAnon and far-right conspiracy content 2020; blamed on a hacker — widely disbelieved; headlined M'era Luna 2025 without public reckoning"},
+
+    {"name": "Andy Laplegua",
+     "artists": ["Combichrist", "Icon of Coil", "Panzer AG"], "members": [],
+     "tier": "accused",
+     "summary": "Fascist and misogynistic song content; Confederate flag displayed; bandmate Joe Letz did blackface — Laplegua did not publicly condemn it"},
+
+    {"name": "Al Jourgensen",
+     "artists": ["Ministry", "Revolting Cocks", "Lard"], "members": [],
+     "tier": "accused",
+     "summary": "Documented history of abusing women, detailed in his own autobiography; bandmate Sin Quirin accused of underage sexual relationships — band stood by him"},
+
+    {"name": "Morrissey",
+     "artists": ["Morrissey", "The Smiths"], "members": [],
+     "tier": "accused",
+     "summary": "Longstanding racism and xenophobia; called Chinese people a 'subspecies' (2010); supports far-right UK parties; defended Kevin Spacey and Harvey Weinstein"},
+
+    {"name": "Jimmy Urine",
+     "artists": ["Mindless Self Indulgence"], "members": [],
+     "tier": "accused",
+     "summary": "Sued for sexual assault of a minor; civil case settled out of court 2024; no criminal conviction"},
+
+    {"name": "Andy Deane",
+     "artists": ["Bella Morte"], "members": [],
+     "tier": "accused",
+     "summary": "Documented serial abuser — multiple partners; cheating and possible STD transmission; community-sourced evidence via Bella Verita project"},
+
+    {"name": "Adam Bravin",
+     "artists": ["She Wants Revenge"], "members": [],
+     "tier": "accused",
+     "summary": "Abusive behaviour documented in relation to Cloak and Dagger Club LA; multiple victim accounts"},
+
+    {"name": "Genesis P-Orridge",
+     "artists": ["Throbbing Gristle", "Psychic TV"], "members": [],
+     "tier": "accused",
+     "summary": "Documented abuse of ex-wife; abuse as head of TOPY (Temple ov Psychick Youth); abuse of Cosey Fanni Tutti"},
+
+    {"name": "Nikolas Schreck",
+     "artists": ["Radio Werewolf"], "members": [],
+     "tier": "accused",
+     "summary": "Nazi imagery and fascist ideology; longstanding association with Boyd Rice and white nationalist networks"},
+
+    {"name": "Ronny Moorings",
+     "artists": ["Clan of Xymox"], "members": [],
+     "tier": "accused",
+     "summary": "2021 album widely read as pro-QAnon; made dismissive jokes about Trump's border wall and #MeToo; posts AI-generated slop on social media"},
+
+    {"name": "Michale Graves",
+     "artists": [], "members": ["Misfits"],
+     "tier": "accused",
+     "summary": "Former Misfits vocalist; testified on behalf of Proud Boys at Jan 6 sedition trial, stating they 'didn't mean to attack the Capitol'"},
+
+    {"name": "Thomas Rainer",
+     "artists": ["Nachtmahr"], "members": [],
+     "tier": "accused",
+     "summary": "Sustained use of Nazi-adjacent imagery; racist and misogynistic content; genre-community consensus leans toward genuine ideology rather than provocation"},
+
+    {"name": "Rozz Williams",
+     "artists": ["Christian Death", "Shadow Project"], "members": [],
+     "tier": "accused",
+     "summary": "Heavily into Nazi imagery throughout career; band (current members) also noted for COVID conspiracy theories"},
+
+    {"name": "Michael Gira",
+     "artists": ["Swans"], "members": [],
+     "tier": "accused",
+     "summary": "Accused of rape by singer Larkin Grimm (2016); Gira denied, issued statement — no charges filed; ongoing community debate"},
+
+    {"name": "Brian Graupner",
+     "artists": ["The Gothsicles"], "members": [],
+     "tier": "accused",
+     "summary": "Signal-boosting anti-trans and far-right spokespeople on social media; associated with other flagged musicians; dropped from Dark Force Fest 2025"},
+
+    {"name": "Jimmy Page",
+     "artists": [], "members": ["Led Zeppelin"],
+     "tier": "accused",
+     "summary": "Well-documented statutory rape of 14-year-old Lori Maddox in 1970s; relevant to David Bowie-era groupie culture context"},
+
+    {"name": "David Bowie",
+     "artists": ["David Bowie"], "members": [],
+     "tier": "accused",
+     "summary": "Credible accounts of sex with underage groupies in the 1970s (Lori Maddox era); no charges; also see China Girl video for racist gesture"},
+
+    {"name": "Alice Cooper",
+     "artists": ["Alice Cooper"], "members": [],
+     "tier": "accused",
+     "summary": "Anti-trans public comments; dropped by makeup brand MAC in 2023"},
+
+    {"name": "Nina Hagen",
+     "artists": ["Nina Hagen"], "members": [],
+     "tier": "accused",
+     "summary": "TERF (trans-exclusionary radical feminist) public statements; AIDS denier"},
+
+    {"name": "Joolz Denby",
+     "artists": [], "members": ["New Model Army"],
+     "tier": "accused",
+     "summary": "Band manager and album artist for New Model Army; public transphobic statements"},
+
+    {"name": "Brandon Plybus",
+     "artists": ["Sonsombre"], "members": [],
+     "tier": "accused",
+     "summary": "Active member of Sons of Confederate Veterans — racist and anti-LGBT confederate organization"},
+
+    {"name": "William Control",
+     "artists": ["William Control"], "members": [],
+     "tier": "accused",
+     "summary": "Accused 2018 of operating a coercive BDSM sex cult targeting fans; police declined to prosecute; wrote an album glorifying the abuse"},
+
+    {"name": "Ethan Kath",
+     "artists": ["Crystal Castles"], "members": [],
+     "tier": "accused",
+     "summary": "Accused of sexual assault and domestic abuse by former bandmate Alice Glass (2017); no charges filed; band effectively ended"},
+
+    {"name": "Matt Slowikow",
+     "artists": ["The Drowning Season"], "members": [],
+     "tier": "accused",
+     "summary": "Racist conduct documented via community screencaps"},
+
+    {"name": "Richard Jomshof",
+     "artists": ["Elegant Machinery"], "members": [],
+     "tier": "accused",
+     "summary": "Band member is a Swedish anti-Muslim far-right politician (Sweden Democrats party)"},
+
+    {"name": "vISION",
+     "artists": ["Tragic Black"], "members": [],
+     "tier": "accused",
+     "summary": "Far-right supporter; band performed in Nazi uniforms/swastikas at Utah Dark Arts Fest 2001"},
+
+    {"name": "Helios Creed",
+     "artists": ["Chrome"], "members": [],
+     "tier": "accused",
+     "summary": "Racist statements on social media; remaining bandmates walked out in protest"}
+  ],
+
+  "song_flags": [
+    {"artist": "Christian Death",  "title": "Romeo's Distress",
+     "reason": "Contains a racial slur (N-word) in the first verse"},
+    {"artist": "The Cure",         "title": "Why Can't I Be You?",
+     "reason": "Music video opens with blackface imagery (0:02)"},
+    {"artist": "David Bowie",      "title": "China Girl",
+     "reason": "Music video contains racist 'Chinese eyes' gesture"},
+    {"artist": "Siouxsie and the Banshees", "title": "Arabian Nights",
+     "reason": "Racist lyrics and Orientalist framing"},
+    {"artist": "Siouxsie and the Banshees", "title": "Hong Kong Garden",
+     "reason": "Racist lyrics (though original intent was reportedly anti-racist)"},
+    {"artist": "Wumpscut",         "title": "Christfuck",
+     "reason": "Glorifies sexual abuse in lyrical content"},
+    {"artist": "Bad Brains",       "title": "Don't Blow No Bubbles",
+     "reason": "Homophobia — song blames gay people for AIDS"}
+  ]
+}

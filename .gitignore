@@ -1,5 +1,8 @@
 .env
-state/
+state/*
+# Allow specific state files needed for PC lyrics pipeline
+!state/tracklist.json
+!state/lyrics_dedup.json
 corrected_music/
 corrected_traktor/
 review.json
@@ -13,3 +16,4 @@ lastfm_creds.txt
 spotify_creds.txt
 spotify_token.json
 suggestions/
+anthropic_creds.txt
