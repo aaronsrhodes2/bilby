@@ -327,9 +327,14 @@ def _theme(path: str) -> str | None:
 
 # ── Block suggestions ─────────────────────────────────────────────────────────
 
+def _song_key(t: Track) -> str:
+    """Dedup key — same artist+title = same song regardless of file/version."""
+    return f"{t.artist.lower().strip()}\t{t.title.lower().strip()}"
+
+
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
     anchor_theme = _theme(anchor.path)
-    results = []
+    best: dict[str, tuple[float, Track]] = {}  # song_key → (score, track)
     for t in tracks:
         if t.path == anchor.path: continue
         gf = 1.0 if t.genre == anchor.genre else genre_compat(anchor.genre, t.genre) * 0.5
@@ -341,8 +346,10 @@ def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
             0.10 * (t.stars / 5.0) +
             0.05 * tc
         )
-        results.append((score, t))
-    results.sort(key=lambda x: -x[0])
+        key = _song_key(t)
+        if key not in best or score > best[key][0]:
+            best[key] = (score, t)
+    results = sorted(best.values(), key=lambda x: -x[0])
     return [t.to_dict(s, transition_type(anchor, t)) for s, t in results[:n] if s > 0.1]
 
 
@@ -355,15 +362,18 @@ def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict
     anchor_theme = _theme(anchor.path)
     groups       = []
     for dest in dest_genres:
-        candidates = []
+        best: dict[str, tuple[float, Track]] = {}
         for t in tracks:
             if t.path in exclude: continue
             mix    = 0.5 * bpm_compat(slot2.bpm, t.bpm) + 0.5 * key_compat(slot2.key, t.key)
             bridge = 1.0 if t.genre == dest else (
                      0.5 if dest in GENRE_NEIGHBORS.get(t.genre, []) else 0.0)
             tc     = theme_compat(anchor_theme, _theme(t.path))
-            candidates.append((0.52 * mix + 0.43 * bridge + 0.05 * tc, t))
-        candidates.sort(key=lambda x: -x[0])
+            score  = 0.52 * mix + 0.43 * bridge + 0.05 * tc
+            key    = _song_key(t)
+            if key not in best or score > best[key][0]:
+                best[key] = (score, t)
+        candidates = sorted(best.values(), key=lambda x: -x[0])
         top = [(s, t) for s, t in candidates[:3] if s > 0.25]
         if top:
             groups.append({"destination": dest,
@@ -753,7 +763,7 @@ def start_lsof_watcher(
     tracks: list,
     index: dict,
     osc_state,
-    interval: float = 1.5,
+    interval: float = 2.0,
 ) -> None:
     """
     Poll lsof every `interval` seconds.  When Traktor opens a new audio file,
@@ -1699,7 +1709,7 @@ def main():
     # ── lsof deck watcher — detects Traktor track loads automatically ─────────
     index = {t.path: t for t in tracks}
     start_lsof_watcher(tracks, index, osc_state)
-    print(f"  Deck watcher: polling Traktor every 1.5s via lsof")
+    print(f"  Deck watcher: polling Traktor every 2s via lsof")
 
     flask_thread = threading.Thread(
         target=lambda: app.run(host="127.0.0.1", port=PORT,
