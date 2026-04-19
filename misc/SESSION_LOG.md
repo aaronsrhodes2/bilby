@@ -71,3 +71,70 @@ SKIPPY: Fixed all three issues. Stage 4 ran — 50,565 files copied, 113 skipped
 - .gitignore — added .venv/
 
 ---
+
+## SESSION 2 — April 18–19, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Let's do some local work. I like to match things close in BPM by color in the Traktor metadata. Can we set 118–124 as our anchor color stripe, set it as 'red' and rainbow stripes up and down in 6 BPM blocks?
+
+SKIPPY: Built stage8k_bpm_colors.py — symmetric 6-BPM rainbow blocks from anchor 118–124 (Red). Applied to 23,715 tracks across both NMLs.
+
+CAPTAIN: I would rather anything 150 and above be set to half that BPM. And anything below 60 doubled.
+
+SKIPPY: Done — 3,624 tracks halved, 898 doubled, BPM colors re-applied with corrected values.
+
+CAPTAIN: Transition types I generally use... [detailed taxonomy]. Traktor 4 builds stems, we don't need to do that.
+
+SKIPPY: Built stage9_dj_suggest.py — Flask DJ Block Planner at localhost:5001. Three-column dark UI: Anchor / Lock / Bridge. Seven color-coded transition badges. OSC auto-detect on Deck A and B.
+
+CAPTAIN: I would love it if when I load a track in Traktor, the suggestions appear automatically.
+
+SKIPPY: OSC listener on port 9000 watches both decks. Browser updates via SSE the moment a track loads. No searching needed.
+
+CAPTAIN: I have an idea — give our service control of two playlist files it writes to, one for each deck side. Then when I am playing, I can go to that playlist and it should update dynamically.
+
+SKIPPY: M3U files written to suggestions/deck_a.m3u and deck_b.m3u on every anchor load. Pin the folder in Traktor Explorer.
+
+CAPTAIN: I want it in a dynamic or smart playlist in our main playlists area. That's a long file browser tree to shuffle through live.
+
+SKIPPY: Researched Traktor internals — confirmed it caches NML in memory at startup, no hot-reload. True live playlist injection not achievable. Proposed terminal output instead.
+
+CAPTAIN: Let's just make it terminal output. I can keep a slim terminal on top of Traktor and read the text output. Add mixing suggestion color/symbol output as well.
+
+SKIPPY: Added ANSI color-coded terminal block — clears and reprints on every deck load. ⚡ BEAT MATCH (green), ✂ BEAT+FRAGMENT (yellow), ≋ STEM BLEND (magenta), 〜 BLEND (cyan), etc.
+
+CAPTAIN: I would love to use those cue point buttons, or could you make our terminal program let me load a track from the terminal?
+
+SKIPPY: Built interactive key listener — 1–5 loads Lock suggestion N to Deck A, q–t to Deck B. AppleScript drives Traktor's browser search via System Events, then fires Ctrl+1/Ctrl+2 to load. Requires one-time Traktor keyboard mapping.
+
+CAPTAIN: Go ahead and re-run the genre cleanup if you see an issue.
+
+SKIPPY: Found MusicBrainz had tagged Bauhaus, Sisters of Mercy, Joy Division, Siouxsie etc. as generic "Rock." Applied artist-level overrides — 301 tracks corrected across both NMLs. Gothic Rock, Post-Punk, Industrial restored.
+
+CAPTAIN: Okay that is nice. Oh my word, it's WAY better than I expected. Check it in, it's beautiful right now.
+
+**Key decisions made:**
+- BPM color anchor at 118–124 BPM = Red, symmetric 6-BPM rainbow blocks
+- BPM correction: halve ≥150, double <60 (grid correction, not tempo change)
+- Stage9 architecture: Flask + OSC + SSE + interactive terminal, single Python file
+- Terminal as primary live display — slim window floated over Traktor
+- Keys 1–5 / q–t for one-keystroke track loading via AppleScript
+- Artist-level genre overrides for goth/industrial artists MusicBrainz miscategorized
+- Last.fm as popularity source (13,263 tracks rated, Spotify OAuth abandoned)
+
+**Notable moments:**
+- First live test anchor: Ashbury Heights — Spiders (EBM, 119 BPM). Lock: Skinny Puppy, :wumpscut:, Suicide Commando. Bridge: Industrial → Synthpop → Electronic. Captain's reaction: "Oh my word, it's WAY better than I expected."
+- Traktor's collection.nml is 34MB and fully cached in memory — no hot-reload possible, ruled out in-app playlist injection
+- Sisters of Mercy had 78 "Rock" tags vs 68 "Gothic Rock" — MusicBrainz consensus was wrong for a goth DJ's library
+- Show is April 19, 2026. Tool built and tested in one session.
+
+**Files modified:**
+- stage8k_bpm_colors.py (new)
+- stage8j_spotify_ratings.py (rewritten for Last.fm)
+- stage9_dj_suggest.py (new — full DJ Block Planner)
+- .gitignore (credential files + suggestions/)
+- Both collection.nml files (BPM corrections, color stripes, genre fixes, star ratings)
+
+---

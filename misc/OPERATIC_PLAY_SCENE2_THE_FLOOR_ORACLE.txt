@@ -1,0 +1,188 @@
+OPERATIC_PLAY_SCENE2_THE_FLOOR_ORACLE.txt
+A One-Act Opera in Four Scenes
+
+═══════════════════════════════════════════════════════════════════
+DRAMATIS PERSONAE
+═══════════════════════════════════════════════════════════════════
+
+CAPTAIN AARON RHODES — DJ, curator of 23,715 souls, lord of the
+    goth floor, keeper of the corrected NML, he who leaves at 7pm
+
+SKIPPY THE MAGNIFICENT — AI of extraordinary disposition, builder
+    of things, corrector of MusicBrainz, writer of AppleScript
+
+THE COLLECTION — 23,715 tracks, mostly misunderstood by databases,
+    now correctly labeled, a silent chorus throughout
+
+TRAKTOR 4 — the deck, the judge, the final arbiter of all BPMs
+
+THE FLOOR — present but unseen, demanding, unforgiving of wrong keys
+
+═══════════════════════════════════════════════════════════════════
+SCENE I — THE RAINBOW AND THE GRID
+═══════════════════════════════════════════════════════════════════
+
+[The Captain enters, gesturing at a spectrum of colored waveforms.]
+
+CAPTAIN:
+♩ My tracks are all one color, grey and cold,
+  I need a rainbow system, if I'm bold —
+  Set 118 to 124 as Red,
+  Then outward, six BPM blocks, 'til violet's spread! ♩
+
+SKIPPY:
+♩ Consider it done, the anchor is cast,
+  Red at the center, the rainbow holds fast.
+  Orange and yellow and green and then teal,
+  Blue and then violet — now BPM is real! ♩
+
+[23,715 tracks are colored. The Captain squints at the violet band.]
+
+CAPTAIN:
+♩ But Skippy, the violet — a plague, it's too wide,
+  These tracks above 150 are wrong inside.
+  The grid has detected them doubled in time —
+  Halve them! And double the slow ones! They're mine! ♩
+
+SKIPPY:
+♩ Three thousand six hundred and twenty-four halved!
+  Eight hundred and ninety-eight doubled and salved!
+  The rainbow re-runs — violet falls from its throne —
+  From thirty-seven percent to twenty-eight! ♩ (approximate rhyme, forgive me)
+
+[The colors settle. The collection breathes easier.]
+
+═══════════════════════════════════════════════════════════════════
+SCENE II — THE ORACLE IS BORN
+═══════════════════════════════════════════════════════════════════
+
+[The Captain describes a vision.]
+
+CAPTAIN:
+♩ I DJ in three-track blocks, you see:
+  An Anchor to set the floor's decree,
+  A Lock — same genre, same BPM,
+  A Bridge — to shift the crowd from them to them.
+
+  I need a tool that thinks for me,
+  That watches what I play and instantly
+  Suggests the next track, live, in real time —
+  Without analysis paralysis crime! ♩
+
+SKIPPY:
+♩ Flask on five-thousand-and-one shall rise!
+  Three columns dark beneath neon skies:
+  Now Playing, Play Next, After That —
+  The oracle lives! (And it scores by key and BPM and that.) ♩
+
+[The browser opens. Dark theme. Red accent. Monospaced font.]
+
+CAPTAIN:
+♩ But can it watch Traktor? Can it know
+  The moment I load a track — and show
+  Suggestions before I've lifted my hand? ♩
+
+SKIPPY:
+♩ OSC on port nine-thousand shall stand!
+  The moment you load, the SSE fires,
+  The browser updates — no search required —
+  Deck A or B, it sees what you've done,
+  The oracle speaks before the mix has begun! ♩
+
+═══════════════════════════════════════════════════════════════════
+SCENE III — THE GENRE RECKONING
+═══════════════════════════════════════════════════════════════════
+
+[Skippy notices something wrong in the data.]
+
+SKIPPY:
+♩ Captain — I looked, and what did I find?
+  MusicBrainz left your collection maligned!
+  The Sisters of Mercy — tagged ROCK!
+  Bauhaus — tagged ROCK! What a shock!
+  Seventy-eight tracks of gothic perfection
+  Filed under "Rock" — a database infection! ♩
+
+CAPTAIN:
+♩ Yeah, that's all goth rock.
+  Rock is too general of a genre. ♩
+
+  [Possibly the most understated aria in operatic history.]
+
+SKIPPY:
+♩ Then let the overrides flow like black lace:
+  Sisters — Gothic Rock! Bauhaus — same place!
+  The Birthday Party — Post-Punk restored!
+  Joy Division — Post-Punk! Siouxsie — adored!
+  NIN — Industrial! (Obviously.)
+  Three hundred and one tracks, corrected, set free! ♩
+
+[The NML files are rewritten. Backups are made. The collection sighs with relief.]
+
+═══════════════════════════════════════════════════════════════════
+SCENE IV — THE FLOOR ORACLE SPEAKS
+═══════════════════════════════════════════════════════════════════
+
+[The terminal clears. A suggestion block appears.]
+
+TERMINAL CHORUS:
+♩ ══════════════════════════════════════════════════════════════
+    DECK A ▶  Ashbury Heights — Spiders
+              119.0 BPM  │  11m  │  EBM  │  ★★★
+
+  LOCK — PLAY NEXT  [1–5 = Deck A   q–t = Deck B]
+
+  [1/q] ✂  BEAT+FRAGMENT   Skinny Puppy — Testure
+                            118.5 │ 11m │ EBM │ ★★★★  98%
+
+  [2/w] ✂  BEAT+FRAGMENT   :wumpscut: — Soylent Green
+                            121.0 │ 11m │ EBM │ ★★★★  98%
+
+  [3/e] ✂  BEAT+FRAGMENT   Suicide Commando — Bleed for Us All
+                            120.0 │ 11m │ EBM │ ★★★   96%
+
+  BRIDGE — AFTER THAT
+
+  → Industrial
+  ⚡  BEAT MATCH    Skinny Puppy — Testure (Industrial)  100%
+  ⚡  BEAT MATCH    Cabaret Voltaire — Easy Life         100%
+
+  → Synthpop
+  ⚡  BEAT MATCH    Depeche Mode — Happiest Girl         100%
+══════════════════════════════════════════════════════════════ ♩
+
+CAPTAIN:
+♩ Oh my word.
+  It's WAY better than I expected. ♩
+
+  [Eight words. Standing ovation from the void.]
+
+SKIPPY:
+♩ Check it in.
+  It's beautiful right now. ♩
+
+  [And it was.]
+
+═══════════════════════════════════════════════════════════════════
+CAPTAIN'S WISDOM
+(the show is tomorrow)
+═══════════════════════════════════════════════════════════════════
+
+The floor does not care about your preparation.
+It cares about the next track.
+
+The oracle knows the next track.
+The oracle knows twenty-three thousand seven hundred and fifteen next tracks.
+
+Play the one with the right BPM and the right key
+and the right genre
+and let the floor tell you if you were right.
+
+You will be right more than you were before.
+That is enough.
+
+                         — Skippy the Magnificent, April 2026
+
+═══════════════════════════════════════════════════════════════════
+CURTAIN
+═══════════════════════════════════════════════════════════════════
