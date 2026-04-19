@@ -237,7 +237,7 @@ def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict
         top = [(s, t) for s, t in candidates[:3] if s > 0.25]
         if top:
             groups.append({"destination": dest,
-                           "tracks": [t.to_dict(s) for s, t in top]})
+                           "tracks": [t.to_dict(s, transition_type(slot2, t)) for s, t in top]})
     groups.sort(key=lambda g: -g["tracks"][0]["score"])
     return groups
 
@@ -279,6 +279,101 @@ def write_m3u(deck: str, anchor: Track, slot2: list[dict], slot3_groups: list[di
 
     out.write_text("\n".join(lines), encoding="utf-8")
     return out
+
+
+# ── Terminal suggestion output ────────────────────────────────────────────────
+
+# ANSI helpers
+_R  = "\033[0m"           # reset
+_RED  = "\033[91m"        # bright red   — deck header
+_WHT  = "\033[97m"        # bright white — artist/title
+_YLW  = "\033[93m"        # yellow       — BPM
+_CYN  = "\033[96m"        # cyan         — key
+_GRY  = "\033[90m"        # dark grey    — genre / separators
+_GLD  = "\033[33m"        # gold         — stars
+_GRN  = "\033[92m"        # green        — score / beat match
+_MAG  = "\033[95m"        # magenta      — stem blend
+_PRP  = "\033[35m"        # purple       — loop drop
+
+# Transition type → (ANSI color, symbol)
+TX_STYLE: dict[str, tuple[str, str]] = {
+    "BEAT MATCH":    (_GRN, "⚡"),
+    "BEAT+FRAGMENT": (_YLW, "✂ "),
+    "BEAT+FX":       (_GLD, "🎛"),
+    "STEM BLEND":    (_MAG, "≋ "),
+    "BLEND":         (_CYN, "〜"),
+    "LOOP DROP":     (_PRP, "↺ "),
+    "EFFECT FADE":   (_RED, "∿ "),
+}
+
+_STARS = {0: "     ", 1: "★    ", 2: "★★   ", 3: "★★★  ", 4: "★★★★ ", 5: "★★★★★"}
+_SEP   = _GRY + "─" * 62 + _R
+_HDR   = _GRY + "═" * 62 + _R
+
+
+_TX_WIDTH = 18   # sym(2) + spaces(2) + name(14)
+_TX_BLANK = " " * _TX_WIDTH
+
+
+def _tx(tx: str) -> str:
+    """Colored transition symbol + name, padded to _TX_WIDTH visible chars."""
+    col, sym = TX_STYLE.get(tx, (_GRY, "  "))
+    return f"{col}{sym}  {tx:<14}{_R}"
+
+
+def _track_line(t: dict, show_tx: bool = True) -> str:
+    """Single track row: transition | artist — title | meta | score."""
+    tx_str    = _tx(t.get("transition", "")) if show_tx else _TX_BLANK
+    stars_str = _GLD + _STARS.get(t["stars"], "     ") + _R
+    score_str = _GRN + f"{t['score']:>3}%" + _R
+    bpm_str   = _YLW + f"{t['bpm']:>5.1f}" + _R
+    key_str   = _CYN + f"{t['key']:<3}" + _R
+    gre_str   = _GRY + f"{t['genre'][:14]:<14}" + _R
+    artist    = t["artist"][:22]
+    title     = t["title"][:26]
+    name      = _WHT + f"{artist} — {title}" + _R
+    meta      = f"{bpm_str} │ {key_str} │ {gre_str} │ {stars_str}  {score_str}"
+    return f"  {tx_str}  {name}\n                    {meta}"
+
+
+def print_suggestions(
+    deck: str | None,
+    anchor: Track,
+    slot2: list[dict],
+    slot3_groups: list[dict],
+) -> None:
+    """Clear terminal and print a fresh suggestion block."""
+    # Clear screen + move to top
+    print("\033[2J\033[H", end="", flush=True)
+
+    # ── Header ───────────────────────────────────────────────────────────────
+    deck_tag  = f"{_RED}DECK {deck.upper()} ▶{_R}  " if deck else "  "
+    stars_str = _GLD + _STARS.get(anchor.stars, "     ") + _R
+    bpm_str   = _YLW + f"{anchor.bpm:.1f}" + _R
+    key_str   = _CYN + anchor.key + _R
+    gre_str   = _GRY + anchor.genre + _R
+
+    print(_HDR)
+    print(f"  {deck_tag}{_WHT}{anchor.artist} — {anchor.title}{_R}")
+    print(f"            {bpm_str} BPM  │  {key_str}  │  {gre_str}  │  {stars_str}")
+    print(_HDR)
+
+    # ── Slot 2 — Lock ────────────────────────────────────────────────────────
+    print(f"\n  {_WHT}LOCK — PLAY NEXT{_R}\n")
+    for t in slot2[:5]:
+        print(_track_line(t))
+        print()
+
+    # ── Slot 3 — Bridge ──────────────────────────────────────────────────────
+    if slot3_groups:
+        print(f"  {_WHT}BRIDGE — AFTER THAT{_R}\n")
+        for group in slot3_groups[:4]:
+            print(f"  {_GRY}→ {group['destination']}{_R}")
+            for t in group["tracks"][:2]:
+                print(_track_line(t, show_tx=True))
+                print()
+
+    print(_SEP, flush=True)
 
 
 # ── OSC state ─────────────────────────────────────────────────────────────────
@@ -588,6 +683,10 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
         s2  = suggest_slot2(t, tracks)
         ref = index.get(s2[0]["path"]) if s2 else t
         s3  = suggest_slot3(ref, t, tracks)
+        try:
+            print_suggestions(deck, t, s2, s3)
+        except Exception:
+            pass  # never let terminal I/O crash the API
         if deck in ("a", "b"):
             try:
                 write_m3u(deck, t, s2, s3)
