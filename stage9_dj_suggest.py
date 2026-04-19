@@ -172,6 +172,7 @@ TRANSITIONS = {
     "BEAT MATCH":    ("BEAT MATCH",    "beat",    "#4ade80"),  # green  — tight beat mix
     "FRAGMENT":      ("BEAT+FRAGMENT", "frag",    "#facc15"),  # yellow — use 3rd song fragment
     "BEAT+FX":       ("BEAT+FX",       "beatfx",  "#fb923c"),  # orange — beat mix + effect cover
+    "STEM BLEND":    ("STEM BLEND",    "stem",    "#e879f9"),  # pink   — use Traktor stems for vocal/drum control
     "BLEND":         ("BLEND",         "blend",   "#a8dadc"),  # teal   — slow crossfade
     "LOOP DROP":     ("LOOP DROP",     "loop",    "#c084fc"),  # purple — loop vocal, then release
     "EFFECT FADE":   ("EFFECT FADE",   "efx",     "#f87171"),  # red    — FX in/out, hide mismatch
@@ -199,7 +200,10 @@ def transition_type(src: Track, dst: Track) -> str:
     # Within 6 BPM, moderate key → beat mix with light touch
     if bpm_d <= 6:
         return "BEAT MATCH"
-    # Within 12 BPM, decent key → slow blend
+    # Within 12 BPM, decent key, different genre → stem blend (cross-genre benefits most)
+    if bpm_d <= 12 and kc >= 0.5 and not same:
+        return "STEM BLEND"
+    # Within 12 BPM, same genre → regular blend
     if bpm_d <= 12 and kc >= 0.5:
         return "BLEND"
     # Key is totally incompatible → hide it with effects
@@ -312,7 +316,7 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
 .tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
-.tx-loop{background:#4a1d96;color:#c084fc}.tx-efx{background:#7f1d1d;color:#f87171}
+.tx-stem{background:#701a75;color:#e879f9}.tx-loop{background:#4a1d96;color:#c084fc}.tx-efx{background:#7f1d1d;color:#f87171}
 .tx-cut{background:#1e293b;color:#94a3b8}
 .bg{margin-bottom:12px}
 .bg-dest{font-size:10px;color:#4cc9f0;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid #4cc9f0}
@@ -358,7 +362,7 @@ function stars(n){
 }
 const TX_CLASS = {
   'BEAT MATCH':'beat','BEAT+FRAGMENT':'frag','BEAT+FX':'beatfx',
-  'BLEND':'blend','LOOP DROP':'loop','EFFECT FADE':'efx','CUT':'cut'
+  'STEM BLEND':'stem','BLEND':'blend','LOOP DROP':'loop','EFFECT FADE':'efx','CUT':'cut'
 };
 function txBadge(t){
   if(!t.transition) return '';
