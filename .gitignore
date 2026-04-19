@@ -9,3 +9,6 @@ __pycache__/
 *.pyc
 .DS_Store
 .venv/
+lastfm_creds.txt
+spotify_creds.txt
+spotify_token.json

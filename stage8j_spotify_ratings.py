@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 """
-Stage 8j — Spotify Popularity → Traktor Star Ratings
+Stage 8j — Last.fm Listener Counts → Traktor Star Ratings
 
-Fetches Spotify popularity scores (0–100) for unrated tracks and maps them
-to Traktor's 1–5 star RANKING field using percentile normalization within
-your own collection (so goth/industrial tracks aren't penalized for being
-less mainstream than pop).
+Fetches Last.fm listener counts for unrated tracks and maps them to
+Traktor's 1–5 star RANKING field using percentile normalization within
+your own collection (so underground goth/industrial tracks aren't penalized
+vs mainstream pop).
 
 Phases:
-  --fetch    Fetch popularity scores from Spotify, cache to state/
-  --report   Show score distribution and proposed star mapping (dry-run)
+  --fetch    Fetch listener counts from Last.fm, cache to state/
+  --report   Show count distribution and proposed star mapping (dry-run)
   --apply    Write RANKING values into both NML files
 
 Credentials:
-  Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET as environment variables,
-  or create a file called spotify_creds.txt in this directory with:
-      client_id=YOUR_ID
-      client_secret=YOUR_SECRET
+  Create lastfm_creds.txt in this directory with:
+      api_key=YOUR_KEY
 
 Usage:
-  python3 stage8j_spotify_ratings.py --fetch              # run in background
+  python3 stage8j_spotify_ratings.py --fetch              # ~90 min for 23k tracks
   python3 stage8j_spotify_ratings.py --report             # preview mapping
   python3 stage8j_spotify_ratings.py --apply              # write to NML
   python3 stage8j_spotify_ratings.py --fetch --apply      # fetch then apply
@@ -37,7 +35,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -46,122 +44,72 @@ from lib.nml_parser import traktor_to_abs
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-BASE          = Path(__file__).parent
-STATE_DIR     = BASE / "state"
-CACHE_FILE    = STATE_DIR / "spotify_popularity_cache.json"
-LOG_FILE      = STATE_DIR / "spotify_fetch.log"
-TRAKTOR_NML   = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/collection.nml"
-OUR_NML       = BASE / "corrected_traktor" / "collection.nml"
-CREDS_FILE    = BASE / "spotify_creds.txt"
+BASE        = Path(__file__).parent
+STATE_DIR   = BASE / "state"
+CACHE_FILE  = STATE_DIR / "lastfm_listeners_cache.json"
+LOG_FILE    = STATE_DIR / "lastfm_fetch.log"
+TRAKTOR_NML = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/collection.nml"
+OUR_NML     = BASE / "corrected_traktor" / "collection.nml"
+CREDS_FILE  = BASE / "lastfm_creds.txt"
 
 # Traktor RANKING values for 0–5 stars
 RANKING = {0: 0, 1: 51, 2: 102, 3: 153, 4: 204, 5: 255}
 
 # ── Credentials ───────────────────────────────────────────────────────────────
 
-def load_credentials() -> tuple[str, str]:
-    client_id     = os.environ.get("SPOTIFY_CLIENT_ID", "")
-    client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
-    if not client_id and CREDS_FILE.exists():
+def load_api_key() -> str:
+    api_key = os.environ.get("LASTFM_API_KEY", "")
+    if not api_key and CREDS_FILE.exists():
         for line in CREDS_FILE.read_text().splitlines():
             if "=" in line:
                 k, _, v = line.partition("=")
-                k, v = k.strip(), v.strip()
-                if k == "client_id":     client_id     = v
-                if k == "client_secret": client_secret = v
-    if not client_id or not client_secret:
-        print("ERROR: Spotify credentials not found.")
-        print(f"  Set SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET env vars, or create:")
-        print(f"  {CREDS_FILE}")
-        print(f"  with lines:  client_id=XXX  /  client_secret=XXX")
+                if k.strip() == "api_key":
+                    api_key = v.strip()
+    if not api_key:
+        print("ERROR: Last.fm API key not found.")
+        print(f"  Set LASTFM_API_KEY env var, or create {CREDS_FILE}")
+        print(f"  with line:  api_key=YOUR_KEY")
         sys.exit(1)
-    return client_id, client_secret
+    return api_key
 
 
-# ── Spotify API ───────────────────────────────────────────────────────────────
+# ── Last.fm API ───────────────────────────────────────────────────────────────
 
-class SpotifyClient:
-    TOKEN_URL = "https://accounts.spotify.com/api/token"
-    SEARCH_URL = "https://api.spotify.com/v1/search"
+LASTFM_BASE = "http://ws.audioscrobbler.com/2.0/"
 
-    def __init__(self, client_id: str, client_secret: str):
-        self.client_id     = client_id
-        self.client_secret = client_secret
-        self._token        = None
-        self._token_expiry = 0.0
-
-    def _get_token(self) -> str:
-        if self._token and time.time() < self._token_expiry - 30:
-            return self._token
-        import base64
-        creds = base64.b64encode(
-            f"{self.client_id}:{self.client_secret}".encode()
-        ).decode()
-        req = Request(
-            self.TOKEN_URL,
-            data=b"grant_type=client_credentials",
-            headers={
-                "Authorization": f"Basic {creds}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            method="POST",
-        )
+def get_track_listeners(api_key: str, artist: str, title: str) -> int | None:
+    """
+    Fetch listener count from Last.fm track.getInfo.
+    Returns integer listener count, or None if track not found.
+    """
+    params = urlencode({
+        "method":      "track.getInfo",
+        "api_key":     api_key,
+        "artist":      artist,
+        "track":       title,
+        "autocorrect": "1",
+        "format":      "json",
+    })
+    url = f"{LASTFM_BASE}?{params}"
+    req = Request(url, headers={"User-Agent": "music-organizer/1.0"})
+    try:
         with urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-        self._token        = data["access_token"]
-        self._token_expiry = time.time() + data["expires_in"]
-        return self._token
+    except HTTPError as e:
+        if e.code == 429:
+            time.sleep(10)
+            return get_track_listeners(api_key, artist, title)  # one retry
+        return None
+    except URLError:
+        return None
 
-    def search_track(self, artist: str, title: str) -> dict | None:
-        """
-        Search for a track by artist + title.
-        Returns the best-matching track dict (with 'popularity'), or None.
-        """
-        # Clean artist/title for better matching
-        q = f"artist:{_clean_query(artist)} track:{_clean_query(title)}"
-        params = urlencode({"q": q, "type": "track", "limit": 5})
-        url = f"{self.SEARCH_URL}?{params}"
-        token = self._get_token()
-        req = Request(url, headers={"Authorization": f"Bearer {token}"})
-        try:
-            with urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
-        except HTTPError as e:
-            if e.code == 429:
-                retry_after = int(e.headers.get("Retry-After", 5))
-                time.sleep(retry_after + 1)
-                return self.search_track(artist, title)
-            return None
-        except URLError:
-            return None
+    if "error" in data:
+        return None  # track not found or bad request
 
-        tracks = data.get("tracks", {}).get("items", [])
-        if not tracks:
-            return None
-
-        # Pick best match: prefer tracks where artist name is close
-        artist_norm = _normalize(artist)
-        for track in tracks:
-            track_artists = " ".join(a["name"] for a in track.get("artists", []))
-            if _normalize(track_artists).startswith(artist_norm[:6]):
-                return track
-        # Fall back to top result
-        return tracks[0]
-
-
-def _clean_query(s: str) -> str:
-    """Strip parentheticals and punctuation that confuse Spotify search."""
-    s = re.sub(r"\([^)]*\)", "", s)   # remove (feat. ...), (remix), etc.
-    s = re.sub(r"\[[^\]]*\]", "", s)  # remove [...]
-    s = re.sub(r"[^\w\s'-]", " ", s)
-    return s.strip()[:80]
-
-
-def _normalize(s: str) -> str:
-    """Lowercase, strip accents, collapse whitespace."""
-    s = unicodedata.normalize("NFKD", s.lower())
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    return re.sub(r"\s+", " ", s).strip()
+    try:
+        return int(data["track"]["listeners"])
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 # ── NML helpers ───────────────────────────────────────────────────────────────
@@ -201,54 +149,57 @@ def fix_xml_declaration(path: Path) -> None:
     path.write_bytes(content)
 
 
-# ── Popularity → stars mapping ────────────────────────────────────────────────
+# ── Listener count → stars mapping ───────────────────────────────────────────
 
-def popularity_to_stars(scores: list[int]) -> dict[int, int]:
+def listeners_to_stars(counts: list[int]) -> dict[int, int]:
     """
-    Map raw Spotify popularity scores (0–100) to 1–5 stars using
-    percentile bucketing within the provided score list.
-    Returns {raw_score: stars}.
+    Map raw listener counts to 1–5 stars using percentile bucketing
+    within the provided count list. Normalizes against your own collection
+    so underground acts aren't penalized vs mainstream.
+    Returns {raw_count: stars}.
     """
-    if not scores:
+    if not counts:
         return {}
-    sorted_scores = sorted(set(scores))
-    n = len(sorted_scores)
+    sorted_counts = sorted(set(counts))
+    n = len(sorted_counts)
     result = {}
-    for score in sorted_scores:
-        rank = sorted_scores.index(score) / n  # 0.0–1.0 percentile
+    for count in sorted_counts:
+        rank = sorted_counts.index(count) / n  # 0.0–1.0 percentile
         if   rank < 0.20: stars = 1
         elif rank < 0.40: stars = 2
         elif rank < 0.60: stars = 3
         elif rank < 0.80: stars = 4
         else:             stars = 5
-        result[score] = stars
+        result[count] = stars
     return result
 
 
 # ── Fetch phase ───────────────────────────────────────────────────────────────
 
-def run_fetch(args) -> None:
-    client_id, client_secret = load_credentials()
-    spotify = SpotifyClient(client_id, client_secret)
+def run_fetch() -> None:
+    api_key = load_api_key()
 
     STATE_DIR.mkdir(exist_ok=True)
     cache: dict = {}
     if CACHE_FILE.exists():
-        cache = json.loads(CACHE_FILE.read_text())
+        try:
+            cache = json.loads(CACHE_FILE.read_text())
+        except json.JSONDecodeError:
+            cache = {}
 
     tracks = load_unrated_tracks(TRAKTOR_NML)
-    todo = [t for t in tracks if t["path"] not in cache]
+    todo   = [t for t in tracks if t["path"] not in cache]
 
-    print(f"Spotify popularity fetch")
-    print(f"  Unrated tracks:       {len(tracks)}")
-    print(f"  Already cached:       {len(tracks) - len(todo)}")
-    print(f"  To fetch:             {len(todo)}")
+    print(f"Last.fm listener fetch")
+    print(f"  Unrated tracks:  {len(tracks)}")
+    print(f"  Already cached:  {len(tracks) - len(todo)}")
+    print(f"  To fetch:        {len(todo)}")
     if not todo:
         print("  Nothing to do — all unrated tracks already cached.")
         return
 
-    eta_min = len(todo) / 5 / 60  # ~5 req/sec
-    print(f"  Estimated time:       {eta_min:.0f} min")
+    eta_min = len(todo) * 0.22 / 60  # ~0.2s per request + overhead
+    print(f"  Estimated time:  ~{eta_min:.0f} min")
     print()
 
     found = not_found = errors = 0
@@ -261,104 +212,94 @@ def run_fetch(args) -> None:
         if not artist and not title:
             cache[track["path"]] = None
             not_found += 1
-            continue
-
-        try:
-            result = spotify.search_track(artist, title)
-        except Exception as ex:
-            cache[track["path"]] = None
-            errors += 1
-            if errors <= 5:
-                print(f"  [ERROR] {artist} — {title}: {ex}")
-            time.sleep(1)
-            continue
-
-        if result:
-            cache[track["path"]] = {
-                "popularity":    result["popularity"],
-                "spotify_title": result["name"],
-                "spotify_artist": ", ".join(a["name"] for a in result["artists"]),
-                "spotify_id":    result["id"],
-            }
-            found += 1
         else:
-            cache[track["path"]] = None
-            not_found += 1
+            try:
+                count = get_track_listeners(api_key, artist, title)
+            except Exception as ex:
+                count = None
+                errors += 1
+                if errors <= 5:
+                    print(f"  [ERROR] {artist} — {title}: {ex}")
+                time.sleep(1)
 
-        # Save cache every 100 tracks
-        if i % 100 == 0:
+            if count is not None:
+                cache[track["path"]] = count
+                found += 1
+            else:
+                cache[track["path"]] = None
+                not_found += 1
+
+        if i % 200 == 0:
             CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False))
-            elapsed = time.time() - start
-            rate = i / elapsed
+            elapsed   = time.time() - start
+            rate      = i / elapsed
             remaining = (len(todo) - i) / rate / 60
             msg = (f"  {i}/{len(todo)} — found {found}, "
                    f"not found {not_found}, errors {errors} "
-                   f"— ~{remaining:.0f} min remaining")
+                   f"— ~{remaining:.0f} min left")
             print(msg)
             LOG_FILE.write_text(msg + "\n")
 
-        # Rate limit: ~5 req/sec (Spotify allows ~180/30s)
-        time.sleep(0.2)
+        time.sleep(0.2)  # ~5 req/sec, well inside Last.fm limits
 
-    # Final save
     CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False))
     elapsed = time.time() - start
     print(f"\nFetch complete in {elapsed/60:.1f} min")
-    print(f"  Found:     {found}")
-    print(f"  Not found: {not_found}")
-    print(f"  Errors:    {errors}")
-    print(f"  Cache:     {CACHE_FILE}")
+    print(f"  With listener count: {found}")
+    print(f"  Not found:           {not_found}")
+    print(f"  Errors:              {errors}")
+    print(f"  Cache:               {CACHE_FILE}")
 
 
 # ── Report phase ──────────────────────────────────────────────────────────────
 
-def run_report() -> dict[str, int] | None:
+def run_report() -> dict[int, int] | None:
     if not CACHE_FILE.exists():
         print("No cache yet — run --fetch first.")
         return None
 
     cache = json.loads(CACHE_FILE.read_text())
-    scores = [v["popularity"] for v in cache.values() if v and "popularity" in v]
-    score_map = popularity_to_stars(scores)
+    counts = [v for v in cache.values() if isinstance(v, int)]
+    if not counts:
+        print("Cache exists but has no listener counts — run --fetch.")
+        return None
 
-    star_counts = Counter(score_map[s] for s in scores)
-    total_cached = len([v for v in cache.values() if v])
-    total_none   = len([v for v in cache.values() if v is None])
+    star_map   = listeners_to_stars(counts)
+    star_counts = Counter(star_map[c] for c in counts)
+    total_none  = sum(1 for v in cache.values() if v is None)
 
-    print(f"Spotify cache summary")
-    print(f"  Tracks with score:    {total_cached}")
-    print(f"  Tracks not found:     {total_none}")
-    print(f"  Unique scores:        {len(set(scores))}")
-    print(f"  Score range:          {min(scores)}–{max(scores)}" if scores else "")
+    print(f"Last.fm cache summary")
+    print(f"  Tracks with count:  {len(counts)}")
+    print(f"  Tracks not found:   {total_none}")
+    print(f"  Count range:        {min(counts):,} – {max(counts):,} listeners")
     print()
-    print("Proposed star distribution (percentile bucketing):")
+    print("Proposed star distribution (percentile bucketing within your collection):")
     for stars in range(1, 6):
         count = star_counts.get(stars, 0)
-        bar = "█" * (count // 50)
+        bar   = "█" * (count // 100)
         print(f"  {stars}★  {count:6d}  {bar}")
     print()
-    print("Percentile thresholds:")
-    sorted_s = sorted(scores)
-    n = len(sorted_s)
+    print("Percentile thresholds (listener counts):")
+    sorted_c = sorted(counts)
+    n = len(sorted_c)
     for pct, label in [(0.20, "20th"), (0.40, "40th"), (0.60, "60th"), (0.80, "80th")]:
         idx = int(pct * n)
-        print(f"  {label} percentile → popularity {sorted_s[min(idx, n-1)]}")
+        print(f"  {label} percentile → {sorted_c[min(idx, n-1)]:,} listeners")
 
-    return score_map
+    return star_map
 
 
 # ── Apply phase ───────────────────────────────────────────────────────────────
 
-def run_apply(score_map: dict[str, int]) -> None:
+def run_apply(star_map: dict[int, int]) -> None:
     cache = json.loads(CACHE_FILE.read_text())
 
-    # Build path → RANKING map
+    # Build path → RANKING value map
     path_ranking: dict[str, int] = {}
-    for path, data in cache.items():
-        if not data or "popularity" not in data:
+    for path, count in cache.items():
+        if not isinstance(count, int):
             continue
-        pop   = data["popularity"]
-        stars = score_map.get(pop, 0)
+        stars = star_map.get(count, 0)
         if stars:
             path_ranking[path] = RANKING[stars]
 
@@ -398,38 +339,156 @@ def run_apply(score_map: dict[str, int]) -> None:
         print(f"  [{label}] {updated} ratings written → backup: {backup.name}")
         updated_total += updated
 
-    print(f"\nDone. {updated_total // 2} tracks rated in Traktor NML.")
+    print(f"\nDone. {updated_total // 2} tracks rated.")
     print("Reload collection in Traktor to see star ratings.")
+
+
+# ── Spotify OAuth (optional second source) ────────────────────────────────────
+
+SPOTIFY_CREDS_FILE = BASE / "spotify_creds.txt"
+SPOTIFY_TOKEN_FILE = BASE / "spotify_token.json"
+SPOTIFY_REDIRECT   = "http://127.0.0.1:9977/callback"
+
+
+def run_spotify_auth() -> None:
+    """
+    One-time Spotify OAuth flow. Run in a real terminal window.
+    Saves token to spotify_token.json for use by --fetch-spotify.
+    """
+    import http.server
+    import base64
+
+    # Load Spotify creds
+    client_id = client_secret = ""
+    if SPOTIFY_CREDS_FILE.exists():
+        for line in SPOTIFY_CREDS_FILE.read_text().splitlines():
+            if "=" in line:
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip()
+                if k == "client_id":     client_id     = v
+                if k == "client_secret": client_secret = v
+    if not client_id:
+        print(f"ERROR: spotify_creds.txt not found or missing client_id")
+        return
+
+    auth_url = (
+        "https://accounts.spotify.com/authorize?"
+        + urlencode({
+            "client_id":     client_id,
+            "response_type": "code",
+            "redirect_uri":  SPOTIFY_REDIRECT,
+            "scope":         "user-read-private",
+        })
+    )
+
+    code_holder: dict = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            from urllib.parse import urlparse, parse_qs
+            params = {k: v[0] for k, v in
+                      parse_qs(urlparse(self.path).query).items()}
+            if "code" in params:
+                code_holder["code"] = params["code"]
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"<h2>Authorized! You can close this tab.</h2>")
+            else:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"<h2>No code received.</h2>")
+        def log_message(self, *_): pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 9977), Handler)
+
+    print("\nStep 1: Open this URL in your browser:\n")
+    print(f"  {auth_url}\n")
+    print("Step 2: Log in and click Agree.")
+    print("Step 3: Browser redirects to 127.0.0.1 — this script catches it.\n")
+    print("Waiting (up to 5 minutes)...")
+
+    server.timeout = 300
+    server.handle_request()
+
+    if "code" not in code_holder:
+        print("No authorization code received. Run --spotify-auth again.")
+        return
+
+    # Exchange code for tokens
+    auth_header = base64.b64encode(
+        f"{client_id}:{client_secret}".encode()
+    ).decode()
+    body = urlencode({
+        "grant_type":   "authorization_code",
+        "code":         code_holder["code"],
+        "redirect_uri": SPOTIFY_REDIRECT,
+    }).encode()
+    req = Request(
+        "https://accounts.spotify.com/api/token",
+        data=body,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "Content-Type":  "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+    resp = json.loads(urlopen(req, timeout=10).read())
+    if "access_token" not in resp:
+        print(f"Token error: {resp}")
+        return
+
+    token_data = {
+        "access_token":  resp["access_token"],
+        "refresh_token": resp.get("refresh_token", ""),
+        "expires_at":    time.time() + resp["expires_in"],
+    }
+    SPOTIFY_TOKEN_FILE.write_text(json.dumps(token_data))
+
+    # Quick sanity check
+    test_req = Request(
+        "https://api.spotify.com/v1/tracks/7dEdD8frVrU93o1cDadbOb",
+        headers={"Authorization": f"Bearer {resp['access_token']}"},
+    )
+    test = json.loads(urlopen(test_req, timeout=10).read())
+    print(f"\n✓ Auth complete!")
+    print(f"  Test track popularity: {test.get('popularity')}")
+    print(f"  Token saved → {SPOTIFY_TOKEN_FILE}")
+    print(f"\nNow run: python3 stage8j_spotify_ratings.py --fetch")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Fetch Spotify popularity and set Traktor star ratings"
+        description="Fetch Last.fm listener counts and set Traktor star ratings"
     )
-    parser.add_argument("--fetch",  action="store_true", help="Fetch from Spotify API")
-    parser.add_argument("--report", action="store_true", help="Preview star mapping")
-    parser.add_argument("--apply",  action="store_true", help="Write ratings to NML")
+    parser.add_argument("--fetch",        action="store_true", help="Fetch from Last.fm API")
+    parser.add_argument("--report",       action="store_true", help="Preview star mapping")
+    parser.add_argument("--apply",        action="store_true", help="Write ratings to NML")
+    parser.add_argument("--spotify-auth", action="store_true", help="One-time Spotify OAuth (run in a real terminal)")
     args = parser.parse_args()
 
-    if not any([args.fetch, args.report, args.apply]):
+    if not any([args.fetch, args.report, args.apply, args.spotify_auth]):
         parser.print_help()
         return
 
-    score_map = None
+    if args.spotify_auth:
+        run_spotify_auth()
+        return
+
+    star_map = None
 
     if args.fetch:
-        run_fetch(args)
+        run_fetch()
 
     if args.report or args.apply:
-        score_map = run_report()
-        if score_map is None:
+        star_map = run_report()
+        if star_map is None:
             return
 
     if args.apply:
         print()
-        run_apply(score_map)
+        run_apply(star_map)
 
 
 if __name__ == "__main__":
