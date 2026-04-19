@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from urllib.request import urlopen
 
+import AppKit
 import rumps
 
 APP_NAME    = "Maker Shaker"
@@ -85,7 +86,7 @@ def focus_or_open_browser():
 
 class MakerShaker(rumps.App):
     def __init__(self):
-        super().__init__(APP_NAME, icon=ICON_PATH, template=True, quit_button=None)
+        super().__init__(APP_NAME, title=None, icon=ICON_PATH, template=True, quit_button=None)
         self.menu = [
             rumps.MenuItem("Open Maker Shaker", callback=self.open_planner),
             rumps.separator,
@@ -133,6 +134,10 @@ class MakerShaker(rumps.App):
 
 
 if __name__ == "__main__":
+    # Must call sharedApplication before rumps, then set policy to hide dock icon
+    ns_app = AppKit.NSApplication.sharedApplication()
+    ns_app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+
     if not server_is_up():
         threading.Thread(target=start_server, daemon=True).start()
     MakerShaker().run()
