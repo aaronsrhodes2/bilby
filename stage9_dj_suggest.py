@@ -974,6 +974,13 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;color:#ccc;border:1px solid #444;padding:6px 16px;border-radius:4px;font-size:11px;letter-spacing:1px;opacity:0;transition:opacity .15s;pointer-events:none;z-index:999}
 #toast.show{opacity:1}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#2a2a2a}
+#activity-bar{background:#0a0a0a;border-bottom:1px solid #1a1a1a;padding:5px 18px;display:none;align-items:center;gap:12px;flex-shrink:0;font-size:11px}
+#activity-bar.active{display:flex}
+#activity-bar .act-label{color:#4cc9f0;letter-spacing:1px;text-transform:uppercase;font-size:10px;white-space:nowrap;min-width:80px}
+#activity-bar .act-track{flex:1;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
+#activity-bar .act-bar-wrap{width:160px;background:#1a1a1a;border-radius:2px;height:4px;overflow:hidden;flex-shrink:0}
+#activity-bar .act-fill{background:#4cc9f0;height:100%;border-radius:2px;transition:width .4s}
+#activity-bar .act-info{color:#555;white-space:nowrap;font-size:10px}
 </style>
 </head>
 <body>
@@ -990,6 +997,12 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
   <span id="deck-msg">Waiting for Traktor… or search below</span>
   <button class="panic-btn" id="save-btn" onclick="rescueMe('save')" title="Best rated floor track near current BPM/genre">🚨 Save Me</button>
   <button class="panic-btn" id="surprise-btn" onclick="rescueMe('surprise')" title="Highly rated track you haven't played tonight">✨ Surprise Me</button>
+</div>
+<div id="activity-bar">
+  <span class="act-label" id="act-label">PROCESSING</span>
+  <span class="act-track" id="act-track"></span>
+  <div class="act-bar-wrap"><div class="act-fill" id="act-fill" style="width:0%"></div></div>
+  <span class="act-info" id="act-info"></span>
 </div>
 <div id="rescue-box">
   <div class="r-label" id="rescue-label">SAVE ME</div>
@@ -1034,6 +1047,23 @@ fetch('/api/count').then(r=>r.json()).then(d=>{
   document.getElementById('tc').textContent=d.count+' tracks';
   if(d.osc) setOscOn();
 });
+
+function pollActivity(){
+  fetch('/api/activity').then(r=>r.json()).then(d=>{
+    const bar=document.getElementById('activity-bar');
+    if(!d){bar.classList.remove('active');return;}
+    bar.classList.add('active');
+    document.getElementById('act-label').textContent=(d.task||'processing').toUpperCase();
+    const pct=d.total?Math.round(d.done/d.total*100):0;
+    document.getElementById('act-fill').style.width=pct+'%';
+    document.getElementById('act-track').textContent=d.current||'';
+    let info=`${d.done||0}/${d.total||'?'}`;
+    if(d.eta_min!=null) info+=` — ${d.eta_min}m left`;
+    document.getElementById('act-info').textContent=info;
+  }).catch(()=>{});
+}
+setInterval(pollActivity,2500);
+pollActivity();
 
 function setOscOn(){
   oscActive=true;
