@@ -20,7 +20,9 @@ Usage:
 
 import argparse
 import shutil
+import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime
@@ -28,6 +30,72 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from lib.nml_parser import traktor_to_abs
+
+
+# ── Traktor process management ────────────────────────────────────────────────
+
+def traktor_is_running() -> bool:
+    """Return True if any Traktor process is currently running."""
+    result = subprocess.run(
+        ["pgrep", "-f", "Traktor"],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def quit_traktor_gracefully(timeout: int = 15) -> bool:
+    """
+    Send a graceful quit to Traktor via AppleScript.
+    Waits up to `timeout` seconds for it to exit.
+    Returns True if Traktor is no longer running when done.
+    """
+    # Try AppleScript quit first (saves state cleanly)
+    subprocess.run(
+        ["osascript", "-e", 'tell application "Traktor 4" to quit'],
+        capture_output=True,
+    )
+    for _ in range(timeout * 2):
+        time.sleep(0.5)
+        if not traktor_is_running():
+            return True
+    return not traktor_is_running()
+
+
+def relaunch_traktor() -> None:
+    """Reopen Traktor using the `open` command."""
+    subprocess.Popen(["open", "-a", "Traktor 4"])
+
+
+def ensure_traktor_closed(apply: bool) -> bool:
+    """
+    If Traktor is running and we are about to apply changes, offer to quit it.
+    Returns True if it's safe to proceed, False if user should abort.
+    """
+    if not traktor_is_running():
+        return True
+    if not apply:
+        print("[INFO] Traktor is running — dry-run is read-only, no problem.")
+        return True
+
+    print()
+    print("⚠️  Traktor is currently running.")
+    print("   When Traktor closes it overwrites its collection.nml,")
+    print("   undoing any changes we make while it's open.")
+    print()
+    answer = input("Quit Traktor now so we can apply safely? [Y/n]: ").strip().lower()
+    if answer in ("", "y", "yes"):
+        print("   Sending graceful quit to Traktor...", end=" ", flush=True)
+        ok = quit_traktor_gracefully()
+        if ok:
+            print("done.")
+            time.sleep(1)  # give FS a moment to finish writing
+            return True
+        else:
+            print("FAILED — Traktor is still running. Aborting.")
+            return False
+    else:
+        print("Aborting. Close Traktor manually and re-run.")
+        return False
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -243,11 +311,17 @@ def main() -> None:
                         help="Write changes to NML files (default: dry-run)")
     parser.add_argument("--tags", action="store_true",
                         help="Also update GENRE tags in audio files (requires mutagen)")
+    parser.add_argument("--no-relaunch", action="store_true",
+                        help="Do not offer to relaunch Traktor after applying")
     args = parser.parse_args()
 
     mode = "APPLY" if args.apply else "DRY-RUN"
     print(f"Stage 8i — Genre Consolidation [{mode}]")
     print(f"  {len(CONSOLIDATION_MAP)} source genres → {len(CANONICAL)} canonicals\n")
+
+    # Quit Traktor if open (only blocks on --apply)
+    if not ensure_traktor_closed(args.apply):
+        sys.exit(1)
 
     # ── Process NMLs ─────────────────────────────────────────────────────────
     results = {}
@@ -306,7 +380,12 @@ def main() -> None:
     if not args.apply:
         print(f"\nDry-run complete. Run with --apply to write changes.")
     else:
-        print(f"\nStage 8i complete. Reload collection in Traktor to verify.")
+        print(f"\nStage 8i complete.")
+        if not args.no_relaunch:
+            answer = input("Relaunch Traktor now? [Y/n]: ").strip().lower()
+            if answer in ("", "y", "yes"):
+                relaunch_traktor()
+                print("Traktor relaunched.")
 
 
 if __name__ == "__main__":
