@@ -1212,11 +1212,15 @@ async function restoreDeckStatus(){
     const s=await fetch('/api/deck-status').then(r=>r.json());
     if(s.a) await _resolveAndStoreDeck('a',s.a.title,s.a.artist);
     if(s.b) await _resolveAndStoreDeck('b',s.b.title,s.b.artist);
-    if(s.playing_a){deckPlaying.a=true;pillA.className='deck-pill playing';}
+    let anchorDeck=null;
+    if(s.playing_a){deckPlaying.a=true;pillA.className='deck-pill playing';anchorDeck='a';}
     else if(s.a){pillA.className='deck-pill loaded';}
-    if(s.playing_b){deckPlaying.b=true;pillB.className='deck-pill playing';}
+    if(s.playing_b){deckPlaying.b=true;pillB.className='deck-pill playing';if(!anchorDeck)anchorDeck='b';}
     else if(s.b){pillB.className='deck-pill loaded';}
+    if(!anchorDeck&&s.a) anchorDeck='a';
     renderDeckCards();
+    // Fire full suggestion pipeline for whichever deck is active
+    if(anchorDeck&&deckTracks[anchorDeck]) await loadAnchor(deckTracks[anchorDeck],anchorDeck);
   }catch(err){}
 }
 
