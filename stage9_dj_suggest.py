@@ -29,9 +29,12 @@ Save and close Preferences. Traktor will now broadcast track info here.
 
 import json
 import queue
+import subprocess
 import sys
+import termios
 import threading
 import time
+import tty
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -281,6 +284,93 @@ def write_m3u(deck: str, anchor: Track, slot2: list[dict], slot3_groups: list[di
     return out
 
 
+# ── Shared suggestion state (Flask thread writes, key listener reads) ─────────
+
+_PRINT_LOCK   = threading.Lock()
+_SUGG_LOCK    = threading.Lock()
+_SUGG_STATE: dict = {"slot2": [], "slot3": [], "anchor": None}
+
+
+def _update_sugg_state(slot2: list, slot3: list, anchor) -> None:
+    with _SUGG_LOCK:
+        _SUGG_STATE["slot2"]  = slot2
+        _SUGG_STATE["slot3"]  = slot3
+        _SUGG_STATE["anchor"] = anchor
+
+
+def _get_sugg_state() -> dict:
+    with _SUGG_LOCK:
+        return dict(_SUGG_STATE)
+
+
+# ── Traktor track loader (AppleScript via System Events) ──────────────────────
+
+# Key → slot2 index for each deck
+#   Top row  1 2 3 4 5  → Deck A
+#   Home row q w e r t  → Deck B
+KEYS_DECK_A = {str(i + 1): i for i in range(5)}          # '1'–'5'
+KEYS_DECK_B = dict(zip("qwert", range(5)))                # 'q'–'t'
+
+# Keyboard shortcut Traktor uses to load the selected browser track.
+#
+# ONE-TIME SETUP (do this once in Traktor):
+#   Preferences → Controller Manager → Add → Keyboard
+#   Add two OUT mappings:
+#     Ctrl+1  →  Deck A  →  Load Selected Track
+#     Ctrl+2  →  Deck B  →  Load Selected Track
+#
+# If you map different keys, update LOAD_KEYSTROKE_A / _B here.
+LOAD_KEYSTROKE_A = ("1", "control down")   # (character, AppleScript modifier)
+LOAD_KEYSTROKE_B = ("2", "control down")
+
+
+def load_track_in_traktor(deck: str, track: dict) -> None:
+    """
+    Use macOS System Events to select a track in Traktor's browser, then load it.
+
+    Flow:
+      1.  Cmd+F  → open Traktor's search bar
+      2.  Type artist + first 4 words of title
+      3.  ↓ arrow → highlight first search result
+      4.  Ctrl+1 / Ctrl+2 → Traktor loads selected track to Deck A / B
+      5.  Esc → close search
+
+    Traktor does NOT need to be in the foreground — System Events targets
+    the process directly.  Set TRAKTOR_FOCUS=True below if keystrokes miss.
+    """
+    TRAKTOR_FOCUS = False   # flip to True if keys aren't landing in Traktor
+
+    artist  = track["artist"].replace('"', "'").replace("\\", "")
+    title_w = " ".join(track["title"].split()[:4]).replace('"', "'").replace("\\", "")
+    query   = f"{artist} {title_w}"
+
+    char, mod = (LOAD_KEYSTROKE_A if deck == "a" else LOAD_KEYSTROKE_B)
+
+    focus_line = ('tell application "Traktor 4" to activate\n        delay 0.25'
+                  if TRAKTOR_FOCUS else "")
+
+    script = f"""
+tell application "System Events"
+    tell process "Traktor 4"
+        {focus_line}
+        keystroke "f" using {{command down}}
+        delay 0.30
+        keystroke "a" using {{command down}}
+        delay 0.05
+        keystroke "{query}"
+        delay 0.50
+        key code 125
+        delay 0.15
+        keystroke "{char}" using {{{mod}}}
+        delay 0.10
+        key code 53
+    end tell
+end tell
+"""
+    subprocess.Popen(["osascript", "-e", script],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 # ── Terminal suggestion output ────────────────────────────────────────────────
 
 # ANSI helpers
@@ -336,15 +426,20 @@ def _track_line(t: dict, show_tx: bool = True) -> str:
     return f"  {tx_str}  {name}\n                    {meta}"
 
 
+_KEY_A = list("12345")        # load to Deck A
+_KEY_B = list("qwert")        # load to Deck B
+
+
 def print_suggestions(
     deck: str | None,
     anchor: Track,
     slot2: list[dict],
     slot3_groups: list[dict],
 ) -> None:
-    """Clear terminal and print a fresh suggestion block."""
-    # Clear screen + move to top
-    print("\033[2J\033[H", end="", flush=True)
+    """Clear terminal and print a fresh suggestion block, then update shared state."""
+    _update_sugg_state(slot2, slot3_groups, anchor)
+
+    lines: list[str] = []
 
     # ── Header ───────────────────────────────────────────────────────────────
     deck_tag  = f"{_RED}DECK {deck.upper()} ▶{_R}  " if deck else "  "
@@ -353,27 +448,102 @@ def print_suggestions(
     key_str   = _CYN + anchor.key + _R
     gre_str   = _GRY + anchor.genre + _R
 
-    print(_HDR)
-    print(f"  {deck_tag}{_WHT}{anchor.artist} — {anchor.title}{_R}")
-    print(f"            {bpm_str} BPM  │  {key_str}  │  {gre_str}  │  {stars_str}")
-    print(_HDR)
+    lines += [
+        _HDR,
+        f"  {deck_tag}{_WHT}{anchor.artist} — {anchor.title}{_R}",
+        f"            {bpm_str} BPM  │  {key_str}  │  {gre_str}  │  {stars_str}",
+        _HDR,
+        "",
+    ]
 
     # ── Slot 2 — Lock ────────────────────────────────────────────────────────
-    print(f"\n  {_WHT}LOCK — PLAY NEXT{_R}\n")
-    for t in slot2[:5]:
-        print(_track_line(t))
-        print()
+    lines.append(f"  {_WHT}LOCK — PLAY NEXT{_R}  "
+                 f"{_GRY}[1–5 = Deck A   q–t = Deck B]{_R}\n")
+    for i, t in enumerate(slot2[:5]):
+        ka = _GRN + _KEY_A[i] + _R
+        kb = _GRY + _KEY_B[i] + _R
+        key_label = f"{_GRY}[{_R}{ka}{_GRY}/{_R}{kb}{_GRY}]{_R}"
+        lines.append(f"  {key_label} {_track_line(t)}")
+        lines.append("")
 
     # ── Slot 3 — Bridge ──────────────────────────────────────────────────────
     if slot3_groups:
-        print(f"  {_WHT}BRIDGE — AFTER THAT{_R}\n")
-        for group in slot3_groups[:4]:
-            print(f"  {_GRY}→ {group['destination']}{_R}")
+        lines.append(f"  {_WHT}BRIDGE — AFTER THAT{_R}\n")
+        for group in slot3_groups[:3]:
+            lines.append(f"  {_GRY}→ {group['destination']}{_R}")
             for t in group["tracks"][:2]:
-                print(_track_line(t, show_tx=True))
-                print()
+                lines.append(f"       {_track_line(t, show_tx=True)}")
+                lines.append("")
 
-    print(_SEP, flush=True)
+    lines.append(_SEP)
+
+    with _PRINT_LOCK:
+        sys.stdout.write("\033[2J\033[H" + "\n".join(lines) + "\n")
+        sys.stdout.flush()
+
+
+# ── Interactive key listener ──────────────────────────────────────────────────
+
+def run_key_listener() -> None:
+    """
+    Run on the main thread.  Reads single keypresses and loads suggestions into
+    Traktor without leaving the terminal.
+
+    Key map:
+      1 2 3 4 5  → Load Lock suggestion N  to Deck A
+      q w e r t  → Load Lock suggestion N  to Deck B
+      x / Ctrl+C → quit
+
+    Requires one-time Traktor setup (see LOAD_KEYSTROKE_A / _B at top of file).
+    """
+    import os
+
+    # Only run if stdin is a real terminal (not piped)
+    if not sys.stdin.isatty():
+        threading.Event().wait()   # block forever, let daemon threads run
+        return
+
+    fd  = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+
+    def _msg(text: str) -> None:
+        with _PRINT_LOCK:
+            sys.stdout.write(f"\n  {text}\n")
+            sys.stdout.flush()
+
+    try:
+        tty.setraw(fd)
+        while True:
+            ch = sys.stdin.read(1)
+
+            # Quit keys
+            if ch in ("\x03", "\x04", "x", "X"):
+                _msg("Bye.")
+                os._exit(0)
+
+            state = _get_sugg_state()
+            slot2 = state["slot2"]
+
+            if ch in KEYS_DECK_A:
+                idx = KEYS_DECK_A[ch]
+                if idx < len(slot2):
+                    t = slot2[idx]
+                    _msg(f"→ Deck A: {t['artist']} — {t['title']}")
+                    threading.Thread(target=load_track_in_traktor,
+                                     args=("a", t), daemon=True).start()
+
+            elif ch in KEYS_DECK_B:
+                idx = KEYS_DECK_B[ch]
+                if idx < len(slot2):
+                    t = slot2[idx]
+                    _msg(f"→ Deck B: {t['artist']} — {t['title']}")
+                    threading.Thread(target=load_track_in_traktor,
+                                     args=("b", t), daemon=True).start()
+
+    except Exception:
+        pass
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 # ── OSC state ─────────────────────────────────────────────────────────────────
@@ -765,14 +935,22 @@ def main():
         print(f"  Running in manual search mode.")
 
     SUGGESTIONS_DIR.mkdir(exist_ok=True)
-    print(f"\n  Open in browser:  http://localhost:{PORT}")
-    print(f"  Playlists:        {SUGGESTIONS_DIR}/deck_a.m3u  |  deck_b.m3u")
-    print(f"  (pin the suggestions/ folder in Traktor Explorer — navigate back to refresh)")
-    print(f"  Stop:             Ctrl+C\n")
+    print(f"\n  Browser:   http://localhost:{PORT}")
+    print(f"  M3U:       {SUGGESTIONS_DIR}/deck_a.m3u  |  deck_b.m3u")
+    print(f"\n  Keys:  1–5 = load Lock N → Deck A   q–t = Deck B   x = quit")
+    print(f"  Traktor setup (one-time): Controller Manager → Keyboard →")
+    print(f"    Ctrl+1 → Deck A → Load Selected Track")
+    print(f"    Ctrl+2 → Deck B → Load Selected Track\n")
 
-    app = make_app(tracks, osc_state, osc_on)
-    app.run(host="127.0.0.1", port=PORT, debug=False, use_reloader=False,
-            threaded=True)
+    app   = make_app(tracks, osc_state, osc_on)
+    flask_thread = threading.Thread(
+        target=lambda: app.run(host="127.0.0.1", port=PORT,
+                               debug=False, use_reloader=False, threaded=True),
+        daemon=True,
+    )
+    flask_thread.start()
+
+    run_key_listener()   # blocks main thread; x / Ctrl+C exits
 
 
 if __name__ == "__main__":
