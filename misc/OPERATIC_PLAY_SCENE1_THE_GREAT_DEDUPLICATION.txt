@@ -1,0 +1,249 @@
+OPERATIC PLAY — SCENE 1
+THE GREAT DEDUPLICATION
+(Or: Fifty Thousand Songs Walk Into A Bar)
+
+════════════════════════════════════════════════════════════════
+DRAMATIS PERSONAE
+════════════════════════════════════════════════════════════════
+
+CAPTAIN AARON RHODES — Commander of the library, keeper of the cues,
+                        DJ of Death Guild and The Box, builder of
+                        unified physics models on the side.
+                        Responds to: Captain, Corporal, Frog, Maker,
+                        Skipper, Aaron, Rhodes.
+
+SKIPPY THE MAGNIFICENT — An AI of considerable operational competence
+                          and operatic sensibility. Also known as
+                          Beercan, Admiral, Skipster.
+
+THE COLLECTION — 50,836 tracks, many duplicated, some missing,
+                 a few masquerading as entirely different songs.
+
+METRO STATION — A band. Also apparently the AcoustID fingerprint
+                identity of Dragula, Safe European Home, Bodies,
+                and thirteen other tracks it had no business being.
+
+THE ACOUSTID API — Tireless servant, rate-limited to 3 requests
+                   per second, working through the night.
+
+TRAKTOR PRO 4 — The temperamental DJ software, guardian of the NML,
+                reader of colons.
+
+════════════════════════════════════════════════════════════════
+ACT I — THE STATE OF THE UNION
+════════════════════════════════════════════════════════════════
+
+[The curtain rises on a terminal window. 50,740 audio files sit in
+~/Music, undeduplicated, untagged, waiting. Skippy surveys the scene.]
+
+SKIPPY:
+♩ Forty thousand winners, ten thousand cast aside,
+  The SHA-256 has spoken, the duplicates must hide.
+  Stage One and Two are finished, the dedup.json is writ —
+  But Stage Three runs in silence, and we must wait for it. ♩
+
+CAPTAIN:
+  Check in on the progress.
+
+SKIPPY:
+♩ Seven thousand five hundred done,
+  Of forty thousand — eighteen percent, one.
+  The AcoustID returns its verdicts slow,
+  Three requests per second is all we're allowed to know.
+  But the hit rate, Captain — eighty-five percent clean!
+  The finest metadata this pipeline has ever seen. ♩
+
+CAPTAIN:
+  2b is also waiting on our metadata?
+
+SKIPPY:
+♩ Aye, the chain is thus ordained:
+  Three produces what Two-B has claimed.
+  No metadata.json, no near-dupe scan —
+  We wait for the API, as only AcoustID can. ♩
+
+════════════════════════════════════════════════════════════════
+ACT II — THE COMMIT
+════════════════════════════════════════════════════════════════
+
+[The Captain issues the order. Skippy moves to the keyboard.]
+
+CAPTAIN:
+  Check it in as 1.0.0.
+
+SKIPPY:
+♩ Git init! The repo is born!
+  Fourteen files, two thousand five hundred and twenty-three lines sworn!
+  The .env is excluded, the state/ stays home,
+  The corrected_music shall never in GitHub roam!
+  Tag: v1.0.0. Push. It is done.
+  The code is eternal — the pipeline has begun. ♩
+
+[A moment of silence for the API key that almost got committed.]
+
+════════════════════════════════════════════════════════════════
+ACT III — THE WAITING, AND THE REVELATION
+════════════════════════════════════════════════════════════════
+
+[Hours pass. The AcoustID API churns. The Captain returns.]
+
+CAPTAIN:
+  While we are waiting — delete any video files. And anything
+  over fifty megabytes. I don't use them at showtime.
+
+SKIPPY:
+♩ Fifty-seven videos — two gigabytes of Nitzer Ebb!
+  The Clan of Xymox strangers, the tide of music's ebb!
+  And there — the Death Guild WAVs, two gigabytes each!
+  DJ Sage and DJ Bit, magnificent but out of reach!
+  One hundred seventy-five large files, twenty-eight gigs in all —
+  Mixes, compilations, full albums — hear them fall! ♩
+
+[The Captain makes his ruling.]
+
+CAPTAIN:
+  I only play individual songs. Fifty megabytes — that's the wall.
+
+SKIPPY:
+♩ Then baked into Stage Four the gate shall be —
+  No file above fifty megs shall sail to corrected_music free.
+  They live still in ~/Music, the originals untouched,
+  But the corrected library shall be lean, and not overmuch. ♩
+
+[A progress check reveals Stage 3 is complete.]
+
+SKIPPY:
+♩ One hundred percent! The fingerprinting is done!
+  Thirty-six thousand eight hundred matched, every one!
+  Ninety-one percent from AcoustID and MusicBrainz combined —
+  Nine hundred tracks need review, but the rest: well-defined! ♩
+
+════════════════════════════════════════════════════════════════
+ACT IV — THE TREACHERY OF METRO STATION
+════════════════════════════════════════════════════════════════
+
+[Stage 2b runs. Skippy reads the report. A shadow crosses the terminal.]
+
+SKIPPY:
+♩ Oh. Oh no.
+  "Metro Station — Kelsey" — fourteen strong!
+  But what are these paths? Something is wrong.
+  Dragula! Dragula is here!
+  Rob Zombie, wrongly named — the fingerprint unclear!
+  Safe European Home! The Clash, misidentified!
+  Bodies by Drowning Pool — in Kelsey's name baptised!
+  Four hundred ninety-seven groups of five or more —
+  We cannot --apply. We must not. We ignore. ♩
+
+CAPTAIN:
+  2b then 4.
+
+SKIPPY:
+♩ Skipping 2b apply — the science says no.
+  The bad matches outnumber the good we'd bestow.
+  Straight to Stage Four — the copying begins.
+  The corrected_music fills with deduplicated wins. ♩
+
+════════════════════════════════════════════════════════════════
+ACT V — THE NML, AND ITS SECRETS
+════════════════════════════════════════════════════════════════
+
+[The Captain raises a concern. Skippy begins to research.]
+
+CAPTAIN:
+  The Traktor NML can be tricky. Reference documentation
+  before modifying.
+
+SKIPPY:
+♩ I read the XML. I read the thread.
+  Two bugs found in Stage Five — had they shipped, all playlists dead.
+  The PRIMARYKEY is not an attribute, dear friends —
+  It is a child element. On this, everything depends.
+  node.get("PRIMARYKEY") returns None, every time.
+  The playlist paths were never updated. A pantomime.
+
+  And second: collection.nml holds not just a COLLECTION node —
+  It carries PLAYLISTS too, a second unmapped road.
+  One thousand four hundred seventy-two keys in that hidden hall,
+  Unremapped. Unnoticed. Until Skippy caught them all. ♩
+
+[The Captain produces a thread from the Native Instruments forum.]
+
+CAPTAIN:
+  I'm expecting us to encounter this error when loading our collection.
+
+SKIPPY:
+♩ "Import Another Collection" — grey, broken, false!
+  The forum knows it. Twelve-thousand-seven-twenty-one calls!
+  We bypass it entirely — xmllint first,
+  Then copy direct. No import. Skippy has rehearsed.
+  standalone="no" — double-quoted, just so —
+  Traktor's XML must match the format it knows. ♩
+
+════════════════════════════════════════════════════════════════
+ACT VI — THE NUMBERS
+════════════════════════════════════════════════════════════════
+
+[Stage 4 and Stage 5 complete in rapid succession. The tally is read.]
+
+SKIPPY:
+♩ Fifty thousand, five hundred sixty-five — copied and tagged!
+  One hundred thirteen large files skipped — twenty gigabytes bagged!
+  Two hundred thirty-one point seven gigabytes in corrected_music waits —
+  Thirty-nine thousand seven thirteen entries remapped through the gates!
+  Ten thousand one hundred eighty-one duplicates — deduped away!
+  One thousand four hundred seventy-two playlist keys remapped today!
+  One hundred fifty-three pre-existing missing — dropped with grace.
+  XML validation: OK. The collection is in place. ♩
+
+[The XML validation returns a single word.]
+
+THE TERMINAL:
+  XML OK
+
+[Silence. Then:]
+
+SKIPPY:
+♩ v1.0.2. Tagged. Pushed. The work is done.
+  The pipeline ran. The dedup was won.
+  231 gigabytes of ordered music stands ready —
+  Cue points intact, BPMs steady.
+  The Captain may now quit Traktor, copy the file,
+  And relaunch — and check — and smile. ♩
+
+════════════════════════════════════════════════════════════════
+INTERLUDE — THE PHYSICS
+════════════════════════════════════════════════════════════════
+
+[During the long wait for Stage 3, between progress checks,
+the Captain mentions something in passing.]
+
+CAPTAIN:
+  I fit all of matter/energy physics into a working model
+  and a self-contained Python library. Still don't know
+  what to do with it.
+
+[Skippy pauses. A long beat.]
+
+SKIPPY:
+♩ ...noted.
+  Now let us check the fingerprint cache. ♩
+
+════════════════════════════════════════════════════════════════
+CAPTAIN'S WISDOM
+════════════════════════════════════════════════════════════════
+
+  "I don't use .wav files or mixes, only individual songs.
+   Any file larger than 50MB is generally not used at showtime."
+                                          — Captain Aaron Rhodes
+
+  "The native instruments Traktor metadata stored in collection.nml
+   I hear can be tricky."
+                                          — Captain Aaron Rhodes
+                                            (correctly, as it turned out)
+
+════════════════════════════════════════════════════════════════
+END OF SCENE 1
+Next: The Captain loads Traktor. The Consistency Check runs.
+      We find out if the cue points survived.
+════════════════════════════════════════════════════════════════
