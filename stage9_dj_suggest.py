@@ -74,8 +74,9 @@ class Track:
         return f"{self.artist} {self.title}".lower()
 
     def to_dict(self, score: float = 0.0, transition: str = "") -> dict:
-        rep = reputation_for(self.artist)
-        lyr = lyrics_for(self.path)
+        rep  = reputation_for(self.artist)
+        lyr  = lyrics_for(self.path)
+        sflag = song_flag_for(self.artist, self.title)
         return {
             "path":         self.path,
             "artist":       self.artist,
@@ -88,6 +89,7 @@ class Track:
             "transition":   transition,
             "rep_tier":     rep["tier"]     if rep else None,
             "rep_summary":  rep["summary"]  if rep else None,
+            "song_flag":    sflag,
             "lyric_summary":lyr["summary"]  if lyr else None,
             "lyric_theme":  lyr["theme"]    if lyr else None,
             "lyric_flags":  lyr["flags"]    if lyr else [],
@@ -116,11 +118,29 @@ def load_reputation_flags(path: Path) -> dict[str, dict]:
             index[band.lower().strip()] = entry
     return index
 
-REP_FLAGS: dict[str, dict] = load_reputation_flags(REP_FLAGS_FILE)
+REP_FLAGS:  dict[str, dict] = load_reputation_flags(REP_FLAGS_FILE)
+SONG_FLAGS: dict[str, str]  = {}   # "artist\ttitle" → reason
+
+def _load_song_flags(path: Path) -> dict[str, str]:
+    if not path.exists(): return {}
+    try:
+        data = json.loads(path.read_text())
+        return {
+            f"{sf['artist'].lower().strip()}\t{sf['title'].lower().strip()}": sf["reason"]
+            for sf in data.get("song_flags", [])
+        }
+    except Exception:
+        return {}
+
+SONG_FLAGS = _load_song_flags(REP_FLAGS_FILE)
 
 def reputation_for(artist: str) -> dict | None:
     """Return reputation flag dict if the artist is flagged, else None."""
     return REP_FLAGS.get(artist.lower().strip())
+
+def song_flag_for(artist: str, title: str) -> str | None:
+    """Return the reason string if this specific song is flagged, else None."""
+    return SONG_FLAGS.get(f"{artist.lower().strip()}\t{title.lower().strip()}")
 
 
 # ── Lyrics index ──────────────────────────────────────────────────────────────
@@ -574,6 +594,10 @@ def print_suggestions(
     key_str   = _CYN + anchor.key + _R
     gre_str   = _GRY + anchor.genre + _R
 
+    lyr = lyrics_for(anchor.path)
+    sflag = song_flag_for(anchor.artist, anchor.title)
+    rep   = reputation_for(anchor.artist)
+
     lines += [
         _HDR,
         f"  {deck_tag}{_WHT}{anchor.artist} — {anchor.title}{_R}",
@@ -581,6 +605,18 @@ def print_suggestions(
         _HDR,
         "",
     ]
+    if lyr and lyr.get("summary"):
+        theme_str = f"  [{lyr['theme']}]" if lyr.get("theme") else ""
+        lines.append(f"  {_GRY}♪ {lyr['summary']}{theme_str}{_R}")
+        if lyr.get("flags"):
+            lines.append(f"  \033[95m⚠ LYRIC FLAGS: {', '.join(lyr['flags'])}{_R}")
+    if sflag:
+        lines.append(f"  \033[93m⚠ THIS SONG: {sflag}{_R}")
+    if rep:
+        tier_col = "\033[91m" if rep["tier"]=="convicted" else ("\033[92m" if rep["tier"]=="settled" else "\033[93m")
+        lines.append(f"  {tier_col}⚠ ARTIST ({rep['tier'].upper()}): {rep['summary']}{_R}")
+    if lyr or sflag or rep:
+        lines.append("")
 
     # ── Slot 2 — Lock ────────────────────────────────────────────────────────
     lines.append(f"  {_WHT}LOCK — PLAY NEXT{_R}  "
@@ -1126,11 +1162,16 @@ function txBadge(t){
   return`<span class="tx tx-${TX_CLASS[t.transition]||'cut'}">${t.transition}</span>`;
 }
 function repBadge(t){
-  if(!t.rep_tier)return'';
-  const cls=`rep-${t.rep_tier}`;
-  const icon=t.rep_tier==='convicted'?'🔴 CONVICTED':t.rep_tier==='settled'?'🟢 SETTLED':'⚠ ACCUSED';
-  const tip=esc(t.rep_summary||'');
-  return`<span class="${cls}" title="${tip}">${icon}</span>`;
+  let out='';
+  if(t.rep_tier){
+    const cls=`rep-${t.rep_tier}`;
+    const icon=t.rep_tier==='convicted'?'🔴 CONVICTED':t.rep_tier==='settled'?'🟢 SETTLED':'⚠ ACCUSED';
+    out+=`<span class="${cls}" title="${esc(t.rep_summary||'')}">${icon}</span>`;
+  }
+  if(t.song_flag){
+    out+=`<span class="rep-accused" title="${esc(t.song_flag)}" style="background:#1a1a00;color:#fde68a">⚠ THIS SONG</span>`;
+  }
+  return out;
 }
 function lyricBadges(t){
   if(!t.lyric_flags||!t.lyric_flags.length)return'';
