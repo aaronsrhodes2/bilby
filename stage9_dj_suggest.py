@@ -45,16 +45,17 @@ class Track:
     def search_text(self) -> str:
         return f"{self.artist} {self.title}".lower()
 
-    def to_dict(self, score: float = 0.0) -> dict:
+    def to_dict(self, score: float = 0.0, transition: str = "") -> dict:
         return {
-            "path":   self.path,
-            "artist": self.artist,
-            "title":  self.title,
-            "bpm":    round(self.bpm, 1),
-            "key":    self.key,
-            "genre":  self.genre,
-            "stars":  self.stars,
-            "score":  round(score * 100),
+            "path":       self.path,
+            "artist":     self.artist,
+            "title":      self.title,
+            "bpm":        round(self.bpm, 1),
+            "key":        self.key,
+            "genre":      self.genre,
+            "stars":      self.stars,
+            "score":      round(score * 100),
+            "transition": transition,
         }
 
 
@@ -164,6 +165,53 @@ def genre_compat(g1: str, g2: str) -> float:
     return 0.05
 
 
+# ── Transition type ───────────────────────────────────────────────────────────
+
+# Labels, CSS class suffix, hex colour
+TRANSITIONS = {
+    "BEAT MATCH":    ("BEAT MATCH",    "beat",    "#4ade80"),  # green  — tight beat mix
+    "FRAGMENT":      ("BEAT+FRAGMENT", "frag",    "#facc15"),  # yellow — use 3rd song fragment
+    "BEAT+FX":       ("BEAT+FX",       "beatfx",  "#fb923c"),  # orange — beat mix + effect cover
+    "BLEND":         ("BLEND",         "blend",   "#a8dadc"),  # teal   — slow crossfade
+    "LOOP DROP":     ("LOOP DROP",     "loop",    "#c084fc"),  # purple — loop vocal, then release
+    "EFFECT FADE":   ("EFFECT FADE",   "efx",     "#f87171"),  # red    — FX in/out, hide mismatch
+    "CUT":           ("CUT",           "cut",     "#94a3b8"),  # grey   — hard cut
+}
+
+def transition_type(src: Track, dst: Track) -> str:
+    """
+    Infer the best transition technique from src → dst based on
+    BPM proximity, key compatibility, and genre match.
+    """
+    bpm_d = abs(src.bpm - dst.bpm) if src.bpm > 0 and dst.bpm > 0 else 999
+    kc    = key_compat(src.key, dst.key)
+    same  = src.genre == dst.genre
+
+    # Within 2.5 BPM, same genre, good key → can use fragment of a 3rd track
+    if bpm_d <= 2.5 and same and kc >= 0.8:
+        return "FRAGMENT"
+    # Within 6 BPM, compatible key → clean beat mix
+    if bpm_d <= 6 and kc >= 0.8:
+        return "BEAT MATCH"
+    # Within 6 BPM but key clash → beat mix needs effect cover
+    if bpm_d <= 6 and kc < 0.4:
+        return "BEAT+FX"
+    # Within 6 BPM, moderate key → beat mix with light touch
+    if bpm_d <= 6:
+        return "BEAT MATCH"
+    # Within 12 BPM, decent key → slow blend
+    if bpm_d <= 12 and kc >= 0.5:
+        return "BLEND"
+    # Key is totally incompatible → hide it with effects
+    if kc < 0.25:
+        return "EFFECT FADE"
+    # Big BPM gap but key is OK → loop the incoming vocal, drift in
+    if bpm_d > 12 and kc >= 0.6:
+        return "LOOP DROP"
+    # Everything else → blend or cut depending on energy
+    return "BLEND"
+
+
 # ── Block suggestions ─────────────────────────────────────────────────────────
 
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
@@ -180,7 +228,7 @@ def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
         )
         results.append((score, t))
     results.sort(key=lambda x: -x[0])
-    return [t.to_dict(s) for s, t in results[:n] if s > 0.1]
+    return [t.to_dict(s, transition_type(anchor, t)) for s, t in results[:n] if s > 0.1]
 
 
 def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict]:
@@ -261,6 +309,11 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .tk .tn{margin-bottom:4px}.tk .ta{color:#999}.tk .tt{color:#fff}
 .meta{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;margin-top:3px}
 .bpm{color:#f4a261}.key{color:#a8dadc}.gen{color:#666}.scr{color:#4a9}.sts{color:#ffd700;letter-spacing:-1px}
+.tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
+.tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
+.tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
+.tx-loop{background:#4a1d96;color:#c084fc}.tx-efx{background:#7f1d1d;color:#f87171}
+.tx-cut{background:#1e293b;color:#94a3b8}
 .bg{margin-bottom:12px}
 .bg-dest{font-size:10px;color:#4cc9f0;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid #4cc9f0}
 .empty{color:#333;padding:16px;font-size:12px;text-align:center}
@@ -303,6 +356,15 @@ fetch('/api/count').then(r=>r.json()).then(d=>{document.getElementById('tc').tex
 function stars(n){
   return '<span class="sts">'+'★'.repeat(n)+'<span style="color:#2a2a2a">'+'·'.repeat(5-n)+'</span></span>';
 }
+const TX_CLASS = {
+  'BEAT MATCH':'beat','BEAT+FRAGMENT':'frag','BEAT+FX':'beatfx',
+  'BLEND':'blend','LOOP DROP':'loop','EFFECT FADE':'efx','CUT':'cut'
+};
+function txBadge(t){
+  if(!t.transition) return '';
+  const cls = TX_CLASS[t.transition]||'cut';
+  return `<span class="tx tx-${cls}">${t.transition}</span>`;
+}
 function meta(t,showScore){
   return `<div class="meta">
     <span class="bpm">${t.bpm} BPM</span>
@@ -310,6 +372,7 @@ function meta(t,showScore){
     <span class="gen">${t.genre||'—'}</span>
     ${stars(t.stars)}
     ${showScore?`<span class="scr">${t.score}%</span>`:''}
+    ${txBadge(t)}
   </div>`;
 }
 function tkHtml(t,idx,sel,showScore){
