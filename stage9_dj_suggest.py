@@ -89,6 +89,7 @@ class Track:
             "rep_tier":     rep["tier"]     if rep else None,
             "rep_summary":  rep["summary"]  if rep else None,
             "lyric_summary":lyr["summary"]  if lyr else None,
+            "lyric_theme":  lyr["theme"]    if lyr else None,
             "lyric_flags":  lyr["flags"]    if lyr else [],
         }
 
@@ -264,18 +265,61 @@ def transition_type(src: Track, dst: Track) -> str:
     return "BLEND"
 
 
+# ── Lyrical theme compatibility ───────────────────────────────────────────────
+# Clusters of emotionally adjacent themes — same cluster = full bonus,
+# adjacent cluster = half bonus, unrelated = no bonus.
+# "surreal" is a wildcard: compatible with everything.
+THEME_CLUSTERS: list[set[str]] = [
+    {"loss", "isolation", "nostalgia", "alienation"},
+    {"love", "loss", "longing"},
+    {"anger", "rebellion", "power"},
+    {"darkness", "death", "spirituality"},
+    {"euphoria", "love"},
+    {"identity", "alienation", "isolation"},
+]
+
+def theme_compat(t1: str | None, t2: str | None) -> float:
+    """1.0 = same theme, 0.5 = adjacent cluster, 0.0 = unrelated. Surreal = 0.5 always."""
+    if not t1 or not t2:
+        return 0.0          # no data → no effect
+    if t1 == t2:
+        return 1.0
+    if "surreal" in (t1, t2):
+        return 0.5
+    for cluster in THEME_CLUSTERS:
+        if t1 in cluster and t2 in cluster:
+            return 1.0      # same cluster
+    # Check adjacent clusters (share at least one member in common)
+    clusters1 = [c for c in THEME_CLUSTERS if t1 in c]
+    clusters2 = [c for c in THEME_CLUSTERS if t2 in c]
+    for c1 in clusters1:
+        for c2 in clusters2:
+            if c1 & c2:     # overlapping clusters → adjacent
+                return 0.5
+    return 0.0
+
+
+def _theme(path: str) -> str | None:
+    """Return lyric theme for a track path, or None."""
+    entry = LYRICS.get(path)
+    return entry.get("theme") or None if entry else None
+
+
 # ── Block suggestions ─────────────────────────────────────────────────────────
 
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
+    anchor_theme = _theme(anchor.path)
     results = []
     for t in tracks:
         if t.path == anchor.path: continue
         gf = 1.0 if t.genre == anchor.genre else genre_compat(anchor.genre, t.genre) * 0.5
+        tc = theme_compat(anchor_theme, _theme(t.path))
         score = (
-            0.35 * bpm_compat(anchor.bpm, t.bpm) +
-            0.35 * key_compat(anchor.key, t.key) +
-            0.20 * gf +
-            0.10 * (t.stars / 5.0)
+            0.33 * bpm_compat(anchor.bpm, t.bpm) +
+            0.33 * key_compat(anchor.key, t.key) +
+            0.19 * gf +
+            0.10 * (t.stars / 5.0) +
+            0.05 * tc
         )
         results.append((score, t))
     results.sort(key=lambda x: -x[0])
@@ -283,12 +327,13 @@ def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
 
 
 def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict]:
-    dest_genres = GENRE_NEIGHBORS.get(anchor.genre, [])
+    dest_genres  = GENRE_NEIGHBORS.get(anchor.genre, [])
     if not dest_genres:
         all_genres  = list({t.genre for t in tracks if t.genre})
         dest_genres = [g for g in all_genres if g != anchor.genre][:8]
-    exclude = {anchor.path, slot2.path}
-    groups  = []
+    exclude      = {anchor.path, slot2.path}
+    anchor_theme = _theme(anchor.path)
+    groups       = []
     for dest in dest_genres:
         candidates = []
         for t in tracks:
@@ -296,7 +341,8 @@ def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict
             mix    = 0.5 * bpm_compat(slot2.bpm, t.bpm) + 0.5 * key_compat(slot2.key, t.key)
             bridge = 1.0 if t.genre == dest else (
                      0.5 if dest in GENRE_NEIGHBORS.get(t.genre, []) else 0.0)
-            candidates.append((0.55 * mix + 0.45 * bridge, t))
+            tc     = theme_compat(anchor_theme, _theme(t.path))
+            candidates.append((0.52 * mix + 0.43 * bridge + 0.05 * tc, t))
         candidates.sort(key=lambda x: -x[0])
         top = [(s, t) for s, t in candidates[:3] if s > 0.25]
         if top:

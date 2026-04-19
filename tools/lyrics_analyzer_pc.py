@@ -62,25 +62,45 @@ FLAG_DESCRIPTIONS = {
     "extreme_violence":"Explicit glorification of real-world murder or torture",
 }
 
+THEMES = [
+    "loss",        # grief, heartbreak, mourning
+    "isolation",   # loneliness, alienation, disconnection
+    "love",        # longing, desire, romance, devotion
+    "anger",       # rage, defiance, frustration
+    "darkness",    # occultism, horror, the void, dread
+    "death",       # mortality, decay, suicide, the afterlife
+    "identity",    # self, transformation, existential questioning
+    "euphoria",    # ecstasy, transcendence, dancing, release
+    "spirituality",# religion, mysticism, faith, ritual
+    "rebellion",   # anti-authority, punk ethos, resistance
+    "alienation",  # feeling inhuman, outcast, estranged from society
+    "nostalgia",   # memory, the past, longing for what was
+    "power",       # control, domination, submission, strength
+    "surreal",     # abstract, dreamlike, imagery-driven, no clear narrative
+]
+
 SYSTEM_PROMPT = f"""You are a music content analyst for a DJ who plays goth, darkwave, industrial, and post-punk.
 
-Your job: given song lyrics, write ONE concise sentence summarizing what the song is actually about lyrically.
-Then, if the lyrics contain content that conflicts with progressive community values (racism, homophobia,
-transphobia, antisemitism, misogyny, glorification of sexual violence or child abuse, extreme real-world violence),
-list the relevant flags.
+Given song lyrics, produce three things:
+
+1. summary — ONE concise sentence describing what the song is actually about lyrically.
+
+2. theme — ONE word from this list that best captures the dominant emotional/thematic territory:
+   {", ".join(THEMES)}
+
+3. flags — list any content that conflicts with progressive community values. Valid flags:
+   {", ".join(FLAG_DESCRIPTIONS.keys())}
 
 IMPORTANT — do NOT flag:
 - Dark themes (death, decay, depression, occultism, vampires, horror, BDSM, fetish, nihilism)
 - Dark emotions (despair, isolation, obsession, rage)
 These are normal goth content and should NOT be flagged.
+ONLY flag genuinely bigoted, hateful content or content that promotes real-world harm to marginalized groups.
 
-ONLY flag content that is genuinely bigoted, hateful, or promotes real-world harm to marginalized groups.
-
-Valid flags: {", ".join(FLAG_DESCRIPTIONS.keys())}
-
-Respond with valid JSON only. Example:
-{{"summary": "A meditation on mortality and the decay of the body.", "flags": []}}
-{{"summary": "Glorifies violence against a specific ethnic group using slurs.", "flags": ["racism", "extreme_violence"]}}
+Respond with valid JSON only. Examples:
+{{"summary": "A meditation on mortality and the decay of the body.", "theme": "death", "flags": []}}
+{{"summary": "Desperate longing for a lost lover who will never return.", "theme": "loss", "flags": []}}
+{{"summary": "Glorifies violence against a specific ethnic group using slurs.", "theme": "anger", "flags": ["racism", "extreme_violence"]}}
 """
 
 
@@ -125,8 +145,11 @@ def summarize_with_ollama(model: str, artist: str, title: str, lyrics: str) -> d
             raw = re.sub(r'^```(?:json)?\s*', '', raw)
             raw = re.sub(r'\s*```$', '', raw)
             parsed = json.loads(raw)
-            # Validate flags
+            # Validate flags and theme
             parsed["flags"] = [f for f in parsed.get("flags", []) if f in FLAG_DESCRIPTIONS]
+            parsed["theme"] = parsed.get("theme", "").lower().strip()
+            if parsed["theme"] not in THEMES:
+                parsed["theme"] = ""
             return parsed
     except Exception as e:
         print(f"    [ollama error] {artist} — {title}: {e}")
@@ -235,6 +258,7 @@ def main():
             with dedup_lock:
                 dedup[track["dkey"]] = {
                     "summary": result["summary"],
+                    "theme":   result.get("theme", ""),
                     "flags":   result.get("flags", []),
                 }
                 summ_done += 1
