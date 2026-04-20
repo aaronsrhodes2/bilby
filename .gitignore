@@ -4,6 +4,7 @@ state/*
 !state/tracklist.json
 !state/lyrics_dedup.json
 !state/lyrics_summary.json
+!state/drive_known.json
 corrected_music/
 corrected_traktor/
 review.json
