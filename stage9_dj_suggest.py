@@ -61,13 +61,14 @@ RANKING_TO_STARS = {0: 0, 51: 1, 102: 2, 153: 3, 204: 4, 255: 5}
 
 @dataclass
 class Track:
-    path:   str
-    artist: str
-    title:  str
-    bpm:    float
-    key:    str
-    genre:  str
-    stars:  int
+    path:     str
+    artist:   str
+    title:    str
+    bpm:      float
+    key:      str
+    genre:    str
+    stars:    int
+    duration: float = 0.0   # seconds, from NML PLAYTIME
 
     @property
     def search_text(self) -> str:
@@ -188,14 +189,19 @@ def load_tracks(nml_path: Path) -> list[Track]:
         path = traktor_to_abs(
             loc.get("VOLUME", ""), loc.get("DIR", ""), loc.get("FILE", "")
         )
+        try:
+            duration = float(info.get("PLAYTIME", 0) or 0)
+        except (ValueError, TypeError):
+            duration = 0.0
         tracks.append(Track(
-            path   = path,
-            artist = artist,
-            title  = title,
-            bpm    = bpm,
-            key    = info.get("KEY",   ""),
-            genre  = info.get("GENRE", ""),
-            stars  = RANKING_TO_STARS.get(ranking, 0),
+            path     = path,
+            artist   = artist,
+            title    = title,
+            bpm      = bpm,
+            key      = info.get("KEY",   ""),
+            genre    = info.get("GENRE", ""),
+            stars    = RANKING_TO_STARS.get(ranking, 0),
+            duration = duration,
         ))
     return tracks
 
@@ -362,10 +368,14 @@ def _song_key(t: Track) -> str:
 
 
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
-    anchor_theme = _theme(anchor.path)
+    anchor_theme    = _theme(anchor.path)
+    anchor_artist   = anchor.artist.lower().strip()
+    played_artists  = _get_played_artists()
     best: dict[str, tuple[float, Track]] = {}  # song_key → (score, track)
     for t in tracks:
         if t.path == anchor.path: continue
+        if t.artist.lower().strip() == anchor_artist: continue   # no same-artist in lock list
+        if t.artist.lower().strip() in played_artists: continue  # skip already-played artists
         if SHOW_GENRES is not None and t.genre not in SHOW_GENRES: continue
         gf  = 1.0 if t.genre == anchor.genre else genre_compat(anchor.genre, t.genre) * 0.5
         tc  = theme_compat(anchor_theme, _theme(t.path))
@@ -381,23 +391,38 @@ def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
         key = _song_key(t)
         if key not in best or score > best[key][0]:
             best[key] = (score, t)
-    results = sorted(best.values(), key=lambda x: -x[0])
-    return [t.to_dict(s, transition_type(anchor, t)) for s, t in results[:n] if s > 0.1]
+    # Per-artist dedup: keep only the highest-scoring track per artist in the output
+    sorted_results = sorted(best.values(), key=lambda x: -x[0])
+    seen_artists: set[str] = set()
+    deduped = []
+    for s, t in sorted_results:
+        a = t.artist.lower().strip()
+        if a not in seen_artists:
+            seen_artists.add(a)
+            deduped.append((s, t))
+        if len(deduped) >= n:
+            break
+    return [t.to_dict(s, transition_type(anchor, t)) for s, t in deduped if s > 0.1]
 
 
 def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict]:
-    genre_filter = SHOW_GENRES if SHOW_GENRES is not None else CORE_GENRES
-    dest_genres  = [g for g in GENRE_NEIGHBORS.get(anchor.genre, []) if g in genre_filter]
+    genre_filter    = SHOW_GENRES if SHOW_GENRES is not None else CORE_GENRES
+    dest_genres     = [g for g in GENRE_NEIGHBORS.get(anchor.genre, []) if g in genre_filter]
     if not dest_genres:
         all_genres  = list({t.genre for t in tracks if t.genre and t.genre in genre_filter})
         dest_genres = [g for g in all_genres if g != anchor.genre][:8]
-    exclude      = {anchor.path, slot2.path}
-    anchor_theme = _theme(anchor.path)
-    groups       = []
+    exclude         = {anchor.path, slot2.path}
+    anchor_artist   = anchor.artist.lower().strip()
+    slot2_artist    = slot2.artist.lower().strip()
+    played_artists  = _get_played_artists()
+    anchor_theme    = _theme(anchor.path)
+    groups          = []
     for dest in dest_genres:
         best: dict[str, tuple[float, Track]] = {}
         for t in tracks:
             if t.path in exclude: continue
+            if t.artist.lower().strip() in {anchor_artist, slot2_artist}: continue  # no repeats
+            if t.artist.lower().strip() in played_artists: continue
             if SHOW_GENRES is not None and t.genre not in SHOW_GENRES: continue
             mix    = 0.5 * bpm_compat(slot2.bpm, t.bpm) + 0.5 * key_compat(slot2.key, t.key)
             bridge = 1.0 if t.genre == dest else (
@@ -409,7 +434,16 @@ def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict
             if key not in best or score > best[key][0]:
                 best[key] = (score, t)
         candidates = sorted(best.values(), key=lambda x: -x[0])
-        top = [(s, t) for s, t in candidates[:3] if s > 0.25]
+        # Per-artist dedup within each bridge group
+        seen_artists: set[str] = set()
+        top = []
+        for s, t in candidates:
+            a = t.artist.lower().strip()
+            if a not in seen_artists and s > 0.25:
+                seen_artists.add(a)
+                top.append((s, t))
+            if len(top) >= 3:
+                break
         if top:
             groups.append({"destination": dest,
                            "tracks": [t.to_dict(s, transition_type(slot2, t)) for s, t in top]})
@@ -462,9 +496,16 @@ _PRINT_LOCK   = threading.Lock()
 _SUGG_LOCK    = threading.Lock()
 _SUGG_STATE: dict = {"slot2": [], "slot3": [], "anchor": None}
 
-# Paths loaded into Traktor this session — used by Surprise Me to avoid repeats
-_PLAYED_LOCK  = threading.Lock()
-_PLAYED_PATHS: set[str] = set()
+# Show tracking — paths, artists, and ordered setlist
+_PLAYED_LOCK    = threading.Lock()
+_PLAYED_PATHS:   set[str]  = set()
+_PLAYED_ARTISTS: set[str]  = set()   # normalised lower-strip artist names
+_SETLIST:        list[dict] = []      # ordered played tracks {artist,title,genre,bpm,played_at}
+
+# How long a track must stay in a deck (beyond the other deck's song length)
+# before we consider it "played".  2 min gives time to preview without false-positives.
+PLAYED_GUARD_SECS  = 120   # added on top of other deck's duration
+SOLO_PLAYED_SECS   = 90    # threshold when no other-deck duration is available
 
 FLOOR_GENRES = {
     "EBM", "Industrial", "Gothic Rock", "Darkwave", "Post-Punk",
@@ -477,9 +518,40 @@ def _mark_played(path: str) -> None:
     with _PLAYED_LOCK:
         _PLAYED_PATHS.add(path)
 
+def _mark_played_track(track) -> None:
+    """Record a confirmed-played track: path, artist, and setlist entry."""
+    with _PLAYED_LOCK:
+        _PLAYED_PATHS.add(track.path)
+        _PLAYED_ARTISTS.add(track.artist.lower().strip())
+        _SETLIST.append({
+            "artist":    track.artist,
+            "title":     track.title,
+            "genre":     track.genre,
+            "bpm":       round(track.bpm, 1),
+            "played_at": time.strftime("%H:%M"),
+        })
+        print(f"  [setlist] ✓ played: {track.artist} — {track.title}  [{time.strftime('%H:%M')}]")
+
 def _get_played() -> set[str]:
     with _PLAYED_LOCK:
         return set(_PLAYED_PATHS)
+
+def _get_played_artists() -> set[str]:
+    with _PLAYED_LOCK:
+        return set(_PLAYED_ARTISTS)
+
+def _get_setlist() -> list[dict]:
+    with _PLAYED_LOCK:
+        return list(_SETLIST)
+
+def _reset_show() -> None:
+    """Clear played paths, artists, and setlist for a fresh show."""
+    global _PLAYED_PATHS, _PLAYED_ARTISTS, _SETLIST
+    with _PLAYED_LOCK:
+        _PLAYED_PATHS   = set()
+        _PLAYED_ARTISTS = set()
+        _SETLIST        = []
+    print("  [setlist] Show reset — played history cleared")
 
 
 def _update_sugg_state(slot2: list, slot3: list, anchor) -> None:
@@ -806,9 +878,19 @@ def start_lsof_watcher(
 
     Deck assignment: lower file-descriptor number → Deck A, higher → Deck B.
     This matches Traktor's load order in practice.
+
+    Played detection (time-based):
+      When a file leaves a deck, check how long it was open.
+      If it stayed longer than (other deck's track duration + PLAYED_GUARD_SECS),
+      it was almost certainly played — not just previewed and swapped.
+      Confirmed-played tracks land in _SETLIST for the post-show export.
     """
-    # path → deck letter we assigned it
-    deck_map: dict[str, str] = {}
+    # path → deck letter
+    deck_map:   dict[str, str]           = {}
+    # path → time.time() when first seen by lsof
+    load_times: dict[str, float]         = {}
+    # deck → Track currently in that deck (for duration lookup)
+    deck_track: dict[str, object]        = {}   # Track objects
 
     def _resolve(fpath: str):
         track = index.get(fpath)
@@ -817,20 +899,40 @@ def start_lsof_watcher(
             track = next((t for t in tracks if Path(t.path).name == bn), None)
         return track
 
+    def _check_played(fpath: str, deck: str) -> None:
+        """Decide whether a departing track was actually played."""
+        load_time = load_times.pop(fpath, None)
+        if load_time is None:
+            return
+        time_open = time.time() - load_time
+        # Get the other deck's current track to estimate how long the set was running
+        other_deck = "b" if deck == "a" else "a"
+        other      = deck_track.get(other_deck)
+        if other and getattr(other, "duration", 0) > 30:
+            threshold = other.duration + PLAYED_GUARD_SECS
+        else:
+            threshold = SOLO_PLAYED_SECS
+        if time_open >= threshold:
+            track = _resolve(fpath)
+            if track:
+                _mark_played_track(track)
+
     def _loop():
         nonlocal deck_map
 
-        # Bootstrap: treat all currently-open files as already known so we
-        # don't spam suggestions for tracks already sitting in the decks.
-        # But DO push them once so the browser deck cards populate.
+        # Bootstrap: don't fire suggestions for already-in-deck tracks,
+        # but DO populate deck cards and mark as loaded.
         boot = _traktor_open_audio()
         deck_slots = ["a", "b"]
+        now = time.time()
         for i, (_, fpath) in enumerate(boot[:2]):
             d = deck_slots[i] if i < len(deck_slots) else "a"
-            deck_map[fpath] = d
+            deck_map[fpath]  = d
+            load_times[fpath] = now
             _mark_played(fpath)
             track = _resolve(fpath)
             if track:
+                deck_track[d] = track
                 osc_state.push_track(track, d)
                 try:
                     s2  = suggest_slot2(track, tracks)
@@ -842,18 +944,27 @@ def start_lsof_watcher(
 
         while True:
             time.sleep(interval)
-            current_list = _traktor_open_audio()
+            current_list  = _traktor_open_audio()
             current_paths = {p for _, p in current_list}
             prev_paths    = set(deck_map.keys())
             new_files     = current_paths - prev_paths
             gone_files    = prev_paths    - current_paths
 
-            if not new_files:
+            # Check departing files for played detection BEFORE updating deck_map
+            for fpath in gone_files:
+                deck = deck_map.get(fpath)
+                if deck:
+                    _check_played(fpath, deck)
+
+            if not new_files and not gone_files:
                 continue
 
             # Reclaim deck slots freed by closed files
             freed_decks = [deck_map.pop(fp) for fp in gone_files if fp in deck_map]
             freed_decks.sort()   # "a" before "b"
+
+            if not new_files:
+                continue
 
             # Assign new files: reuse freed slots first, then by fd order
             new_sorted = [(fd, p) for fd, p in current_list if p in new_files]
@@ -867,12 +978,14 @@ def start_lsof_watcher(
                 else:
                     existing = set(deck_map.values())
                     d = "b" if "a" in existing else "a"
-                deck_map[fpath] = d
+                deck_map[fpath]   = d
+                load_times[fpath] = time.time()
 
                 track = _resolve(fpath)
                 if not track:
                     continue
 
+                deck_track[d] = track
                 _mark_played(fpath)
                 osc_state.push_track(track, d)
                 try:
@@ -1103,6 +1216,30 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 .genre-chk.checked{color:#ccc}
 #show-apply{background:#3b2d6e;color:#c4b5fd;border:1px solid #7c3aed;padding:7px 20px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;font-weight:bold;letter-spacing:1px;width:100%}
 #show-apply:hover{background:#4c1d95}
+/* Setlist modal */
+#setlist-btn{background:#1a1a1a;color:#6ee7b7;border:1px solid #065f46;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px}
+#setlist-btn:hover{background:#064e3b;border-color:#34d399}
+#setlist-btn.has-tracks{background:#064e3b;color:#6ee7b7;border-color:#34d399;box-shadow:0 0 6px #34d39944}
+#reset-btn{background:#1a1a1a;color:#f87171;border:1px solid #7f1d1d;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:1px}
+#reset-btn:hover{background:#450a0a;border-color:#ef4444}
+#setlist-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding-top:60px}
+#setlist-overlay.open{display:flex}
+#setlist-modal{background:#0d0d0d;border:1px solid #2d2d2d;border-radius:6px;padding:20px 24px;width:560px;max-width:90vw;max-height:80vh;overflow-y:auto;font-size:12px}
+#setlist-modal h2{color:#6ee7b7;font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:0 0 4px;font-weight:600}
+#setlist-subtitle{color:#555;font-size:11px;margin-bottom:16px}
+#setlist-list{list-style:none;padding:0;margin:0 0 14px}
+#setlist-list li{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid #1a1a1a}
+#setlist-list .sl-num{color:#444;min-width:22px;text-align:right;font-size:10px}
+#setlist-list .sl-time{color:#555;font-size:10px;min-width:38px}
+#setlist-list .sl-artist{color:#ccc;font-weight:600}
+#setlist-list .sl-title{color:#888}
+#setlist-list .sl-genre{color:#555;font-size:10px;margin-left:auto}
+#setlist-empty{color:#555;font-style:italic;padding:20px 0;text-align:center}
+.setlist-actions{display:flex;gap:8px}
+#setlist-export-btn{flex:1;background:#064e3b;color:#6ee7b7;border:1px solid #065f46;padding:7px 14px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px}
+#setlist-export-btn:hover{background:#065f46}
+#setlist-newwin-btn{background:#111;color:#888;border:1px solid #2a2a2a;padding:7px 14px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:.5px}
+#setlist-newwin-btn:hover{border-color:#888;color:#ccc}
 /* ── Light mode overrides ── */
 body.light #deck-bar{background:#ddd8d0;border-bottom-color:#b8b3ac}
 body.light #osc-status.off{background:#d0ccc5;color:#777}
@@ -1229,6 +1366,8 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
   <button class="panic-btn" id="save-btn" onclick="rescueMe('save')" title="Best rated floor track near current BPM/genre">🚨 Save Me</button>
   <button class="panic-btn" id="surprise-btn" onclick="rescueMe('surprise')" title="Highly rated track you haven't played tonight">✨ Surprise Me</button>
   <button id="show-btn" onclick="openShowConfig()" title="Configure show genre filter">🎛 Show Setup</button>
+  <button id="setlist-btn" onclick="openSetlist()" title="View played tracks and export setlist">📋 Setlist</button>
+  <button id="reset-btn" onclick="resetShow()" title="Clear played history for a fresh show">↺ Reset Show</button>
 </div>
 <!-- Show Config Modal -->
 <div id="show-modal-overlay" onclick="closeShowConfig(event)">
@@ -1237,6 +1376,19 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
     <div class="show-profiles" id="show-profiles"></div>
     <div class="genre-grid" id="genre-grid"></div>
     <button id="show-apply" onclick="applyShowConfig()">Apply</button>
+  </div>
+</div>
+<!-- Setlist Modal -->
+<div id="setlist-overlay" onclick="closeSetlist(event)">
+  <div id="setlist-modal">
+    <h2>📋 Tonight's Setlist</h2>
+    <div id="setlist-subtitle">Tracks confirmed played this show</div>
+    <ul id="setlist-list"></ul>
+    <div id="setlist-empty" style="display:none">No tracks played yet — setlist populates automatically as you play.</div>
+    <div class="setlist-actions">
+      <button id="setlist-export-btn" onclick="exportSetlist()">⬇ Copy for Social Media</button>
+      <button id="setlist-newwin-btn" onclick="window.open('/setlist','_blank')">↗ Open in New Tab</button>
+    </div>
   </div>
 </div>
 <div id="activity-bar">
@@ -1386,6 +1538,68 @@ async function applyShowConfig(){
     if(d.genres&&d.genres.length){btn.textContent=`🎛 ${d.genres.length} genres`;btn.classList.add('filtered');}
   }catch(e){}
 })();
+// ── Setlist ───────────────────────────────────────────────────────────────────
+let _setlistData=[];
+async function openSetlist(){
+  await refreshSetlist();
+  document.getElementById('setlist-overlay').classList.add('open');
+}
+function closeSetlist(e){
+  if(e&&e.target!==document.getElementById('setlist-overlay'))return;
+  document.getElementById('setlist-overlay').classList.remove('open');
+}
+async function refreshSetlist(){
+  try{
+    const r=await fetch('/api/setlist');
+    const d=await r.json();
+    _setlistData=d.setlist||[];
+    renderSetlist(_setlistData);
+    const btn=document.getElementById('setlist-btn');
+    if(_setlistData.length){btn.classList.add('has-tracks');btn.textContent=`📋 Setlist (${_setlistData.length})`;}
+    else{btn.classList.remove('has-tracks');btn.textContent='📋 Setlist';}
+  }catch(e){}
+}
+function renderSetlist(sl){
+  const ul=document.getElementById('setlist-list');
+  const em=document.getElementById('setlist-empty');
+  ul.innerHTML='';
+  if(!sl||!sl.length){em.style.display='';return;}
+  em.style.display='none';
+  sl.forEach((e,i)=>{
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="sl-num">${i+1}</span>`
+      +`<span class="sl-time">${e.played_at||''}</span>`
+      +`<span class="sl-artist">${e.artist}</span>`
+      +`<span class="sl-title">— ${e.title}</span>`
+      +`<span class="sl-genre">${e.genre||''}</span>`;
+    ul.appendChild(li);
+  });
+}
+async function exportSetlist(){
+  const r=await fetch('/api/export-setlist');
+  const text=await r.text();
+  try{
+    await navigator.clipboard.writeText(text);
+    toast('Setlist copied to clipboard ✓');
+  }catch(e){
+    // Fallback: open in new tab
+    const w=window.open('');
+    w.document.write('<pre style="font-family:monospace;background:#000;color:#0f0;padding:20px">'+text.replace(/</g,'&lt;')+'</pre>');
+    w.document.close();
+  }
+}
+async function resetShow(){
+  if(!confirm('Reset show? This clears the setlist and played-artist history.'))return;
+  await fetch('/api/setlist',{method:'DELETE'});
+  _setlistData=[];
+  renderSetlist([]);
+  document.getElementById('setlist-btn').classList.remove('has-tracks');
+  document.getElementById('setlist-btn').textContent='📋 Setlist';
+  toast('Show reset — fresh start!');
+}
+// Poll setlist count every 30s to keep button badge current
+setInterval(refreshSetlist,30000);
+refreshSetlist();
 
 const q=document.getElementById('q'),
       res=document.getElementById('results'),
@@ -1703,6 +1917,65 @@ function renderSlot3(groups){
 </html>"""
 
 
+SETLIST_PAGE_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tonight's Setlist</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050505;color:#ccc;font-family:'Courier New',Courier,monospace;padding:32px 24px;max-width:640px;margin:0 auto}
+h1{color:#6ee7b7;font-size:18px;letter-spacing:3px;text-transform:uppercase;margin-bottom:4px}
+#subtitle{color:#444;font-size:11px;letter-spacing:1px;margin-bottom:28px}
+#count{color:#555;font-size:11px;margin-bottom:20px}
+ol{list-style:none;padding:0}
+ol li{display:grid;grid-template-columns:28px 44px 1fr 80px;align-items:baseline;gap:8px;padding:8px 0;border-bottom:1px solid #111;font-size:13px}
+.num{color:#333;text-align:right;font-size:11px}
+.time{color:#555;font-size:11px}
+.track{color:#ccc}
+.track .artist{font-weight:700}
+.track .sep{color:#444}
+.track .title{color:#888}
+.genre{color:#444;font-size:10px;text-align:right;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#empty{color:#444;font-style:italic;text-align:center;padding:60px 0;font-size:13px}
+#footer{margin-top:28px;color:#333;font-size:10px;letter-spacing:1px}
+</style>
+</head>
+<body>
+<h1>📋 Tonight's Setlist</h1>
+<div id="subtitle">Auto-refreshes every 15 seconds</div>
+<div id="count"></div>
+<ol id="list"></ol>
+<div id="empty" style="display:none">Waiting for first track…</div>
+<div id="footer">localhost:7334/setlist · DJ Block Planner</div>
+<script>
+async function load(){
+  const r=await fetch('/api/setlist');
+  const d=await r.json();
+  const sl=d.setlist||[];
+  document.getElementById('count').textContent=sl.length?`${sl.length} track${sl.length>1?'s':''} played`:'';
+  const ol=document.getElementById('list');
+  const em=document.getElementById('empty');
+  ol.innerHTML='';
+  if(!sl.length){em.style.display='';return;}
+  em.style.display='none';
+  sl.forEach((e,i)=>{
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="num">${i+1}</span>`
+      +`<span class="time">${e.played_at||''}</span>`
+      +`<span class="track"><span class="artist">${e.artist}</span><span class="sep"> — </span><span class="title">${e.title}</span></span>`
+      +`<span class="genre">${e.genre||''}</span>`;
+    ol.appendChild(li);
+  });
+}
+load();
+setInterval(load,15000);
+</script>
+</body>
+</html>"""
+
+
 def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
     from flask import Flask, Response, jsonify, request, stream_with_context
 
@@ -1712,6 +1985,15 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
     @app.route("/")
     def ui():
         return Response(HTML, mimetype="text/html")
+
+    @app.route("/setlist")
+    def setlist_page():
+        """
+        Standalone setlist page — open in another tab or on a second screen.
+        Auto-refreshes every 15 seconds so other DJs can follow along live.
+        Shows tonight's played tracks with timestamp, artist, title, and genre.
+        """
+        return Response(SETLIST_PAGE_HTML, mimetype="text/html")
 
     @app.route("/api/count")
     def count():
@@ -1870,6 +2152,40 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
         return jsonify({
             "genres": sorted(SHOW_GENRES) if SHOW_GENRES is not None else None
         })
+
+    @app.route("/api/setlist", methods=["GET", "DELETE"])
+    def setlist():
+        """
+        GET    → return current show setlist as JSON
+        DELETE → reset show: clears setlist, played paths, and played artists
+        """
+        if request.method == "DELETE":
+            _reset_show()
+            return jsonify({"status": "reset", "message": "Show reset — played history cleared"})
+        sl = _get_setlist()
+        return jsonify({"count": len(sl), "setlist": sl})
+
+    @app.route("/api/export-setlist")
+    def export_setlist():
+        """
+        Return the setlist in a social-media-ready plain text format,
+        plus an M3U block for use in Traktor / media players.
+        """
+        import datetime
+        sl   = _get_setlist()
+        date = datetime.date.today().strftime("%B %d, %Y")
+        lines = [f"🎵 DJ Set — {date}", "─" * 40]
+        for i, entry in enumerate(sl, 1):
+            time_str = f"[{entry['played_at']}]" if entry.get("played_at") else ""
+            lines.append(f"{i:02d}. {entry['artist']} — {entry['title']}  {time_str}")
+        lines += ["─" * 40, "#goth #darkwave #industrial #dj", ""]
+
+        # M3U block
+        lines.append("#EXTM3U")
+        for entry in sl:
+            lines.append(f"#EXTINF:-1,{entry['artist']} — {entry['title']}")
+        text = "\n".join(lines)
+        return text, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
     @app.route("/api/activity")
     def activity():
