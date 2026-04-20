@@ -172,3 +172,60 @@ CAPTAIN: Okay that is nice. Oh my word, it's WAY better than I expected. Check i
 - Both collection.nml files (BPM corrections, color stripes, genre fixes, star ratings)
 
 ---
+
+## SESSION 4 — April 19–20, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Build a lyrics pipeline — PC does the heavy lifting with Qwen, Mac pulls and hot-reloads. Also fix genre "Other" bucket, add a show genre filter, and make the lyric summaries readable.
+
+SKIPPY: Built the full lyrics stack — PC tool fetches lyrics.ovh → Qwen2.5:14b → summaries+flags, commits to GitHub. Mac pulls and hot-reloads via /api/reload-lyrics. Built lyric theme scoring (14 themes, THEME_CLUSTERS adjacency) feeding into slot2/slot3 scoring at 5% weight. Theme and summary display in terminal and browser.
+
+CAPTAIN: The PC is done. Pull it in.
+
+SKIPPY: PC had pushed to a branch (claude/upbeat-haslett-77de35) — 10,892 summaries in list format. Converted to dkey dict, filtered invalid "bigotry" flags, built lyrics_index.json (path-keyed) from NML track mapping. 13,362 tracks now indexed. Hot-reloaded live.
+
+CAPTAIN: Genre "Other" has 508 tracks — :wumpscut: obviously shouldn't be there.
+
+SKIPPY: Built tools/fix_other_genres.py — Last.fm artist.gettoptags lookup for all 173 unique "Other" artists, first-match strategy (top tag wins, preserving Last.fm relevance order). 467 tracks reclassified in corrected_traktor NML and audio files, 467 in live Traktor 4.0.2 NML. :wumpscut: (76 tracks) → Industrial. Funker Vogt → EBM. Dead Can Dance → Ambient. Cookie Monster → Comedy. 41 genuinely Other remain (audiobooks, sound effects, personal demos).
+
+CAPTAIN: No punk, pop, rock, metal, rap for tonight's show. Set that as the default and give me a UI to change it.
+
+SKIPPY: Added SHOW_GENRES hard filter (18 goth/darkwave/industrial genres — no punk, rock, metal, pop, hip-hop). Hard-exclude in suggest_slot2/slot3, dest_genres fallback also filtered. Also fixed the fallback bug — was letting non-core genres through. /api/show-config GET/POST endpoint. Browser: 🎛 Show Setup button → modal with pre-set profiles (Pure Goth, Goth Industrial, Dark Electronic, Open Floor) + per-genre checkboxes. Apply mid-set, no restart.
+
+CAPTAIN: The summaries are too dark to read against the black background.
+
+SKIPPY: .lyric-summary color #555 → #8a8fa8. Also added ☀/🌙 theme toggle (dark → warm off-white for outdoor readability), persists via localStorage.
+
+CAPTAIN: Push the missing lyrics task to the PC as a side project.
+
+SKIPPY: Built tools/fetch_missing_lyrics_pc.py — Genius API phase (lyricsgenius) then Whisper STT phase (faster-whisper, falls back to openai-whisper) for tracks with no online lyrics. 9,301 tracks still need coverage.
+
+**Key decisions made:**
+- SHOW_GENRES = hard filter (exclude), not penalty — genres outside the set never appear in suggestions
+- dest_genres fallback in suggest_slot3 now filters to genre_filter (SHOW_GENRES or CORE_GENRES) — no mainstream genres via fallback path
+- lyrics_index.json = path-keyed (server); lyrics_dedup.json = dkey-keyed (pipeline/PC). Both maintained.
+- Last.fm tag lookup uses first-match strategy (top tag wins) — TAXONOMY_INDEX priority was wrong for this use case
+- PC branch had "bigotry" flag not in our taxonomy — filtered on import
+- Light mode CSS uses :root variables + body.light overrides (not a full variable migration)
+
+**Notable moments:**
+- :wumpscut: was in "Other" — 76 tracks. Last.fm top tag: "industrial". Fixed in both NMLs and audio files.
+- Cookie Monster correctly classified as Comedy; Kermit the Frog was being tagged Metal (black metal joke tag on Last.fm) — fixed.
+- PC's qwen2.5:14b flagged 17% of the collection — including 16volt "Two Wires Thin" as extreme_violence for "electrical torment" imagery. Over-flagged but valid flags kept, invalid "bigotry" flag stripped.
+- The Captain said "Summaries too dark" meaning the text COLOR, not the content — #555 on #111 is nearly invisible. Classic contrast error.
+- lyric summaries + theme scoring now active and showing in the live browser
+
+**Files modified:**
+- stage9_dj_suggest.py — SHOW_GENRES, /api/show-config, Show Setup modal, lyric contrast fix, light/dark theme toggle, dest_genres fallback fix
+- stage9_lyrics.py — prompt unchanged (reverted accidental edit)
+- tools/fix_other_genres.py — new
+- tools/fetch_missing_lyrics_pc.py — new
+- tools/lyrics_analyzer_pc.py — prompt unchanged (reverted)
+- corrected_traktor/collection.nml — 461 genre changes
+- Traktor 4.0.2/collection.nml — 467 genre changes (live collection)
+- state/lyrics_dedup.json — 10,892 PC summaries merged
+- state/lyrics_index.json — 13,362 path-keyed entries built
+
+---
