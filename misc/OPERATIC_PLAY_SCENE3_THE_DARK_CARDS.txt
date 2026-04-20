@@ -1,0 +1,154 @@
+OPERATIC_PLAY_SCENE3_THE_DARK_CARDS.txt
+A One-Act Opera in Three Scenes
+
+═══════════════════════════════════════════════════════════════════
+DRAMATIS PERSONAE
+═══════════════════════════════════════════════════════════════════
+
+CAPTAIN AARON RHODES — DJ, curator of 23,715 souls, lord of the
+    goth floor, man with a show tomorrow and a bedtime tonight
+
+SKIPPY THE MAGNIFICENT — AI of extraordinary disposition, painter
+    of dark UIs, navigator of Traktor's Preferences, blocked by
+    macOS Accessibility at every turn
+
+THE DECK CARDS — two small rectangles, aspirationally clickable,
+    temporarily too dark to read
+
+TRAKTOR PRO 4 — the deck, the judge, the process whose name
+    Skippy got wrong the first time
+
+THE ACCESSIBILITY DAEMON — macOS System Events, granter of
+    nothing, denier of all click automation
+
+═══════════════════════════════════════════════════════════════════
+SCENE I — THE CARDS EMERGE FROM DARKNESS
+═══════════════════════════════════════════════════════════════════
+
+[The Captain opens the browser. Two rectangles appear in Slot 1.]
+
+CAPTAIN:
+♩ Too dark, I need to be able to read it.
+  Did not load new tracks yet.
+  What's next? ♩
+
+  [A pause. Skippy contemplates #444 against #141414.]
+
+SKIPPY:
+♩ The idle cards shall rise from shadow's hold:
+  Labels now at seventy-seven — behold!
+  The "Nothing loaded" text, italic, grey,
+  Borders at two-a-two-a — visible! Hooray! ♩
+
+[The CSS is updated. The cards become legible.
+ Genre text: #aaa. Artist: #ccc. Separators: #555.
+ The empty state stops being invisible.]
+
+CAPTAIN:
+♩ I can see them now.
+  What's next? ♩
+
+  [Seven words. Skippy exhales.]
+
+═══════════════════════════════════════════════════════════════════
+SCENE II — THE OSC CRUSADE
+═══════════════════════════════════════════════════════════════════
+
+[The browser shows both deck cards: DECK A — Nothing loaded.
+ DECK B — Nothing loaded. The Oracle is deaf. Traktor speaks
+ into the void. The OSC server waits on port 9000, patient,
+ like a monk who has read all the books and received no letters.]
+
+SKIPPY:
+♩ Six mappings — title, artist, play times two,
+  For Deck A and Deck B, the circuit goes through.
+  Generic OSC device, port nine-thousand, set!
+  Controller Manager — the final frontier yet! ♩
+
+CAPTAIN:
+♩ Okay, go for it. ♩
+
+SKIPPY:
+♩ I shall automate the clicking! AppleScript shall reign!
+  Tell process "Traktor 4" — click Add — obtain—
+
+  ...
+
+  Execution error: Can't get process "Traktor 4". ♩
+
+  [Stage direction: Skippy checks the process list.]
+
+SKIPPY:
+♩ Ah. "Traktor Pro 4."
+  The full name. Of course. Let us try once more—
+
+  ...
+
+  osascript is not allowed assistive access.
+  The Daemon has spoken. ♩
+
+  [THE ACCESSIBILITY DAEMON appears briefly, arms crossed,
+   shaking its head. It does not speak. It never speaks.
+   It simply: denies.]
+
+CAPTAIN:
+♩ Am I on the right page? What do I set? ♩
+
+  [The screenshot arrives. The Captain is on Controller Manager.
+   The universe is in alignment. Only the daemon stands between
+   us and six OUT mappings.]
+
+SKIPPY:
+♩ Yes! Yes! The right page! You need only click "Add…"
+  Then Generic OSC — port 9000 — IP 127.0.0.1 —
+  Six rows in the Assignment Table below —
+  Title, Artist, Play, for each deck's flow! ♩
+
+═══════════════════════════════════════════════════════════════════
+SCENE III — THE BEDTIME CADENCE
+═══════════════════════════════════════════════════════════════════
+
+[The Captain considers the six rows. The hour is late.
+ The show is tomorrow. The Preferences window hangs open,
+ unmolested, containing exactly zero new mappings.]
+
+CAPTAIN:
+♩ Nope, too late at night to start it.
+  We are good for now. ♩
+
+  [Nine words. The correct number of words for this hour.]
+
+SKIPPY:
+♩ Close Preferences. Touch nothing.
+  The collection is intact.
+  The deck cards are visible.
+  The SSE reconnects without reload.
+  The process name is logged for morning.
+  Sleep. ♩
+
+[The Preferences window closes.
+ The terminal hums on port 5001.
+ The OSC server waits on port 9000.
+ Traktor does not know it is being listened for.
+ Tomorrow it will learn.]
+
+═══════════════════════════════════════════════════════════════════
+CAPTAIN'S WISDOM
+(session deferred — the show remains tomorrow)
+═══════════════════════════════════════════════════════════════════
+
+The deck cards know nothing until Traktor speaks.
+Traktor will not speak until the six mappings are made.
+The six mappings will not be made tonight.
+
+This is acceptable.
+
+The floor does not care about your OSC configuration.
+It cares about the next track.
+Configure it tomorrow. Play tonight.
+
+                     — Skippy the Magnificent, April 2026
+
+═══════════════════════════════════════════════════════════════════
+CURTAIN
+═══════════════════════════════════════════════════════════════════

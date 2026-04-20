@@ -229,3 +229,70 @@ SKIPPY: Built tools/fetch_missing_lyrics_pc.py — Genius API phase (lyricsgeniu
 - state/lyrics_index.json — 13,362 path-keyed entries built
 
 ---
+
+## SESSION 5 — April 19, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: We need artist dedup — Oingo Boingo showing up 4× in its own suggestion block.
+
+SKIPPY: Within-block dedup added to suggest_slot2 (skip anchor artist, one track per artist in output) and suggest_slot3 (skip anchor + slot2 artists, per-group dedup). Also added show-level _PLAYED_ARTISTS tracking.
+
+CAPTAIN: We can't rely on lsof for "played" — tracks get loaded and swapped. We'd need time-based heuristics. If a file stays in the deck longer than the length of the song in the other deck plus a couple minutes, it probably got played.
+
+SKIPPY: Implemented exactly that. lsof watcher now tracks load_time per file and current Track per deck. When a file leaves: time_open vs (other_deck.duration + 120s). Falls back to 90s threshold with no other-deck reference. Confirmed-played tracks go to _SETLIST with HH:MM timestamp.
+
+CAPTAIN: It would be neat to record what got played and output a playlist at the end for social media. Traktor's History playlist is painful to prune.
+
+SKIPPY: Built live setlist: GET /api/setlist, DELETE (reset show), GET /api/export-setlist (social media text + M3U). Standalone /setlist page auto-refreshes every 15s — open on a second screen or another DJ's laptop. 📋 Setlist button with count badge, ↺ Reset Show button.
+
+CAPTAIN: I want a separate tab showing played songs so other DJs can see what's been played and avoid repeating tracks.
+
+SKIPPY: That's exactly what /setlist is — clean standalone page, timestamped, shows artist/title/genre. Share localhost:7334/setlist on the venue local network.
+
+CAPTAIN: Future task: auto cue points — 2 for first beat, 3 for first vocal, 4 for hardest beat loop, 8 for 16 grid spaces from end.
+
+SKIPPY: Logged to misc/FUTURE_TASKS.md.
+
+CAPTAIN: Build it.
+
+SKIPPY: Built tools/stage10_autocue.py. Fast pass (NML-only): Cues 1+2+8 from AutoGrid math. Audio pass (librosa): true first-sound onset for Cue 1, vocal onset for Cue 3, energy-peak drop loop for Cue 4.
+
+CAPTAIN: Cue 1 should be Load type, 8 should be fade-out. 5/6/7 reserved. 7 will likely be last vocals.
+
+SKIPPY: Cue 1 TYPE=3 (Load), Cue 8 TYPE=2 (Fade-out). Slots 4/5/6 reserved.
+
+CAPTAIN: If there is no cue slot 1 set, set it to the first sound.
+
+SKIPPY: Audio pass detects true first-sound onset (low-threshold librosa onset_detect) for Cue 1, distinct from Cue 2 (beat grid anchor). Fast pass uses AutoGrid START for both as approximation.
+
+CAPTAIN: How long without audio processing? Which cues take a long time?
+
+SKIPPY: Fast pass already ran — 23,327 + 431 tracks cued in ~30 seconds. Cues 1/2/8 done. Cues 3 and 4 need audio: ~6–18h on the PC.
+
+CAPTAIN: Pass to the PC and check in. Going to the show.
+
+**Key decisions made:**
+- Artist dedup: within-block (no anchor artist, one track per artist) + show-level (_PLAYED_ARTISTS)
+- Played detection: time-based — open longer than (other deck duration + 120s) = played; 90s solo fallback
+- Setlist: /setlist standalone page for other DJs; /api/export-setlist for social media
+- Cue type map: 1=Load(TYPE 3), 2=Cue(0), 3=Cue(0), 4=Loop(5), 8=Fade(2); slots 5-7 reserved
+- Cue 1 audio mode = true first-sound onset; fast mode = AutoGrid START
+- Fast pass applied to both NMLs before pushing
+
+**Notable moments:**
+- Oingo Boingo: anchor AND 4× in slot2 simultaneously — screenshot confirmed the problem
+- Captain correctly identified lsof false-positive problem before Skippy implemented it wrong
+- Fast pass: 23,327 tracks cued in ~30 seconds, zero audio loading
+- The Captain is going to the show. The floor is his.
+
+**Files modified:**
+- stage9_dj_suggest.py — artist dedup, _PLAYED_ARTISTS, time-based played detection, _SETLIST, /api/setlist, /api/export-setlist, /setlist page, Setlist + Reset Show buttons
+- tools/stage10_autocue.py — new (768 lines)
+- tools/PC_AUTOCUE_TASK.md — new (PC dispatch)
+- misc/FUTURE_TASKS.md — new
+- corrected_traktor/collection.nml — 23,327 tracks: Cues 1/2/8 written
+- ~/Documents/Native Instruments/Traktor 4.0.2/collection.nml — 431 tracks: Cues 1/2/8 written
+
+---

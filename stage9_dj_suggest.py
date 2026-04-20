@@ -370,10 +370,12 @@ def _song_key(t: Track) -> str:
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
     anchor_theme    = _theme(anchor.path)
     anchor_artist   = anchor.artist.lower().strip()
+    anchor_key      = _song_key(anchor)   # excludes same song regardless of metadata drift
     played_artists  = _get_played_artists()
     best: dict[str, tuple[float, Track]] = {}  # song_key → (score, track)
     for t in tracks:
         if t.path == anchor.path: continue
+        if _song_key(t) == anchor_key: continue              # same song (different file/version)
         if t.artist.lower().strip() == anchor_artist: continue   # no same-artist in lock list
         if t.artist.lower().strip() in played_artists: continue  # skip already-played artists
         if SHOW_GENRES is not None and t.genre not in SHOW_GENRES: continue
@@ -414,6 +416,8 @@ def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict
     exclude         = {anchor.path, slot2.path}
     anchor_artist   = anchor.artist.lower().strip()
     slot2_artist    = slot2.artist.lower().strip()
+    anchor_key      = _song_key(anchor)
+    slot2_key       = _song_key(slot2)
     played_artists  = _get_played_artists()
     anchor_theme    = _theme(anchor.path)
     groups          = []
@@ -421,6 +425,7 @@ def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict
         best: dict[str, tuple[float, Track]] = {}
         for t in tracks:
             if t.path in exclude: continue
+            if _song_key(t) in {anchor_key, slot2_key}: continue  # same song, different file
             if t.artist.lower().strip() in {anchor_artist, slot2_artist}: continue  # no repeats
             if t.artist.lower().strip() in played_artists: continue
             if SHOW_GENRES is not None and t.genre not in SHOW_GENRES: continue
