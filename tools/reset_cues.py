@@ -40,13 +40,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 BASE        = Path(__file__).resolve().parent.parent
-# If running from a git worktree, the synced data lives in the main repo
-_MAIN_REPO  = Path("D:/Aaron/development/music-collection")
-NML_DEFAULT = (
-    _MAIN_REPO / "corrected_traktor" / "collection.nml"
-    if (_MAIN_REPO / "corrected_traktor" / "collection.nml").exists()
-    else BASE / "corrected_traktor" / "collection.nml"
-)
+# NML lives in this worktree (git-managed, pulled from Mac)
+NML_DEFAULT = BASE / "corrected_traktor" / "collection.nml"
 PROGRESS    = BASE / "state" / "cue_reset_progress.json"
 CORRECTED_MUSIC = Path("D:/Aaron/Music/corrected_music")   # synced from Mac via Syncthing
 AUDIO_EXTS      = {".mp3", ".flac", ".aiff", ".m4a", ".wav", ".ogg"}
