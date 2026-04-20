@@ -62,25 +62,45 @@ FLAG_DESCRIPTIONS = {
     "extreme_violence":"Explicit glorification of real-world murder or torture",
 }
 
+THEMES = [
+    "loss",        # grief, heartbreak, mourning
+    "isolation",   # loneliness, alienation, disconnection
+    "love",        # longing, desire, romance, devotion
+    "anger",       # rage, defiance, frustration
+    "darkness",    # occultism, horror, the void, dread
+    "death",       # mortality, decay, suicide, the afterlife
+    "identity",    # self, transformation, existential questioning
+    "euphoria",    # ecstasy, transcendence, dancing, release
+    "spirituality",# religion, mysticism, faith, ritual
+    "rebellion",   # anti-authority, punk ethos, resistance
+    "alienation",  # feeling inhuman, outcast, estranged from society
+    "nostalgia",   # memory, the past, longing for what was
+    "power",       # control, domination, submission, strength
+    "surreal",     # abstract, dreamlike, imagery-driven, no clear narrative
+]
+
 SYSTEM_PROMPT = f"""You are a music content analyst for a DJ who plays goth, darkwave, industrial, and post-punk.
 
-Your job: given song lyrics, write ONE concise sentence summarizing what the song is actually about lyrically.
-Then, if the lyrics contain content that conflicts with progressive community values (racism, homophobia,
-transphobia, antisemitism, misogyny, glorification of sexual violence or child abuse, extreme real-world violence),
-list the relevant flags.
+Given song lyrics, produce three things:
+
+1. summary — ONE concise sentence describing what the song is actually about lyrically.
+
+2. theme — ONE word from this list that best captures the dominant emotional/thematic territory:
+   {", ".join(THEMES)}
+
+3. flags — list any content that conflicts with progressive community values. Valid flags:
+   {", ".join(FLAG_DESCRIPTIONS.keys())}
 
 IMPORTANT — do NOT flag:
 - Dark themes (death, decay, depression, occultism, vampires, horror, BDSM, fetish, nihilism)
 - Dark emotions (despair, isolation, obsession, rage)
 These are normal goth content and should NOT be flagged.
+ONLY flag genuinely bigoted, hateful content or content that promotes real-world harm to marginalized groups.
 
-ONLY flag content that is genuinely bigoted, hateful, or promotes real-world harm to marginalized groups.
-
-Valid flags: {", ".join(FLAG_DESCRIPTIONS.keys())}
-
-Respond with valid JSON only. Example:
-{{"summary": "A meditation on mortality and the decay of the body.", "flags": []}}
-{{"summary": "Glorifies violence against a specific ethnic group using slurs.", "flags": ["racism", "extreme_violence"]}}
+Respond with valid JSON only. Examples:
+{{"summary": "A meditation on mortality and the decay of the body.", "theme": "death", "flags": []}}
+{{"summary": "Desperate longing for a lost lover who will never return.", "theme": "loss", "flags": []}}
+{{"summary": "Glorifies violence against a specific ethnic group using slurs.", "theme": "anger", "flags": ["racism", "extreme_violence"]}}
 """
 
 
@@ -125,8 +145,11 @@ def summarize_with_ollama(model: str, artist: str, title: str, lyrics: str) -> d
             raw = re.sub(r'^```(?:json)?\s*', '', raw)
             raw = re.sub(r'\s*```$', '', raw)
             parsed = json.loads(raw)
-            # Validate flags
+            # Validate flags and theme
             parsed["flags"] = [f for f in parsed.get("flags", []) if f in FLAG_DESCRIPTIONS]
+            parsed["theme"] = parsed.get("theme", "").lower().strip()
+            if parsed["theme"] not in THEMES:
+                parsed["theme"] = ""
             return parsed
     except Exception as e:
         print(f"    [ollama error] {artist} — {title}: {e}")
@@ -143,6 +166,7 @@ def main():
     parser.add_argument("--skip-fetch",      action="store_true",       help="Skip lyrics fetch phase")
     parser.add_argument("--skip-summarize",  action="store_true",       help="Skip summarization phase")
     parser.add_argument("--report",          action="store_true",       help="Show stats and exit")
+    parser.add_argument("--retag-themes",   action="store_true",       help="Add theme tags to existing summaries that lack them")
     parser.add_argument("--push",            action="store_true",       help="Git commit + push when done")
     args = parser.parse_args()
 
@@ -235,6 +259,7 @@ def main():
             with dedup_lock:
                 dedup[track["dkey"]] = {
                     "summary": result["summary"],
+                    "theme":   result.get("theme", ""),
                     "flags":   result.get("flags", []),
                 }
                 summ_done += 1
@@ -254,6 +279,66 @@ def main():
 
         LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
         print(f"Summarize complete: {summ_done:,} done, {summ_flagged} flagged")
+
+    # ── Phase 2b: Retag themes on existing summaries ──────────────────────
+    if args.retag_themes:
+        to_retag = [dkey for dkey, v in dedup.items() if v.get("summary") and not v.get("theme")]
+        print(f"\nPhase 2b: Tagging themes for {len(to_retag):,} existing summaries "
+              f"({args.workers} workers)…")
+
+        THEME_PROMPT = (
+            "You are tagging songs with an emotional theme for a DJ.\n"
+            f"Choose exactly ONE word from this list: {', '.join(THEMES)}\n"
+            "Respond with valid JSON only. Example: {{\"theme\": \"loss\"}}"
+        )
+
+        retag_lock = threading.Lock()
+        retag_done = 0
+        start_time = time.time()
+
+        def retag_one(dkey):
+            nonlocal retag_done
+            summary = dedup[dkey]["summary"]
+            payload = {
+                "model":  args.model,
+                "system": THEME_PROMPT,
+                "prompt": f'Song summary: "{summary}"',
+                "stream": False,
+                "options": {"temperature": 0.1},
+            }
+            body = json.dumps(payload).encode()
+            req  = Request("http://localhost:11434/api/generate",
+                           data=body, method="POST",
+                           headers={"Content-Type": "application/json"})
+            try:
+                with urlopen(req, timeout=30) as r:
+                    resp = json.loads(r.read())
+                    raw  = resp.get("response", "").strip()
+                    raw  = re.sub(r'^```(?:json)?\s*', '', raw)
+                    raw  = re.sub(r'\s*```$', '', raw)
+                    parsed = json.loads(raw)
+                    theme  = parsed.get("theme", "").lower().strip()
+                    if theme not in THEMES:
+                        theme = ""
+                    with retag_lock:
+                        dedup[dkey]["theme"] = theme
+                        retag_done += 1
+                        if retag_done % 100 == 0:
+                            elapsed   = time.time() - start_time
+                            rate      = retag_done / elapsed if elapsed else 0
+                            remaining = (len(to_retag) - retag_done) / rate if rate else 0
+                            LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
+                            print(f"  [{retag_done}/{len(to_retag)}] — "
+                                  f"{remaining/60:.0f}m remaining")
+            except Exception as e:
+                pass
+
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            list(ex.map(retag_one, to_retag))
+
+        LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
+        tagged = sum(1 for v in dedup.values() if v.get("theme"))
+        print(f"Retag complete: {retag_done:,} tagged ({tagged:,} total with themes)")
 
     # ── Phase 3: Git commit + push ─────────────────────────────────────────
     if args.push:

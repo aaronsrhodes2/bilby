@@ -74,8 +74,9 @@ class Track:
         return f"{self.artist} {self.title}".lower()
 
     def to_dict(self, score: float = 0.0, transition: str = "") -> dict:
-        rep = reputation_for(self.artist)
-        lyr = lyrics_for(self.path)
+        rep  = reputation_for(self.artist)
+        lyr  = lyrics_for(self.path)
+        sflag = song_flag_for(self.artist, self.title)
         return {
             "path":         self.path,
             "artist":       self.artist,
@@ -88,7 +89,9 @@ class Track:
             "transition":   transition,
             "rep_tier":     rep["tier"]     if rep else None,
             "rep_summary":  rep["summary"]  if rep else None,
+            "song_flag":    sflag,
             "lyric_summary":lyr["summary"]  if lyr else None,
+            "lyric_theme":  lyr["theme"]    if lyr else None,
             "lyric_flags":  lyr["flags"]    if lyr else [],
         }
 
@@ -115,11 +118,29 @@ def load_reputation_flags(path: Path) -> dict[str, dict]:
             index[band.lower().strip()] = entry
     return index
 
-REP_FLAGS: dict[str, dict] = load_reputation_flags(REP_FLAGS_FILE)
+REP_FLAGS:  dict[str, dict] = load_reputation_flags(REP_FLAGS_FILE)
+SONG_FLAGS: dict[str, str]  = {}   # "artist\ttitle" → reason
+
+def _load_song_flags(path: Path) -> dict[str, str]:
+    if not path.exists(): return {}
+    try:
+        data = json.loads(path.read_text())
+        return {
+            f"{sf['artist'].lower().strip()}\t{sf['title'].lower().strip()}": sf["reason"]
+            for sf in data.get("song_flags", [])
+        }
+    except Exception:
+        return {}
+
+SONG_FLAGS = _load_song_flags(REP_FLAGS_FILE)
 
 def reputation_for(artist: str) -> dict | None:
     """Return reputation flag dict if the artist is flagged, else None."""
     return REP_FLAGS.get(artist.lower().strip())
+
+def song_flag_for(artist: str, title: str) -> str | None:
+    """Return the reason string if this specific song is flagged, else None."""
+    return SONG_FLAGS.get(f"{artist.lower().strip()}\t{title.lower().strip()}")
 
 
 # ── Lyrics index ──────────────────────────────────────────────────────────────
@@ -209,29 +230,58 @@ def bpm_compat(b1: float, b2: float) -> float:
     return 0.0
 
 
+# Genres that belong in a goth/industrial/darkwave DJ set.
+# Tracks outside this set get a score penalty — keeps mainstream pop/disco
+# from floating up just because their BPM happens to match.
+CORE_GENRES: set[str] = {
+    "Gothic Rock", "Darkwave", "Post-Punk", "EBM", "Industrial",
+    "New Wave", "Synthpop", "Electronic", "Ambient", "Alternative Rock",
+    "Punk", "Hard Rock", "Metal", "Indie Rock", "Rock", "Noise",
+    "Shoegaze", "Coldwave", "Neofolk", "Death Rock", "Goth",
+    "Witch House", "Minimal Wave", "Power Electronics",
+}
+
+# Show-night genre focus (hard filter — tracks outside this set are excluded entirely).
+# Set to None to disable and fall back to CORE_GENRES penalty only.
+# Future: expose via /api/show-config so this can be set from the browser UI.
+#
+# Tonight: pure goth/darkwave/industrial — no punk, rock, metal, pop, rap, country.
+SHOW_GENRES: set[str] | None = {
+    "Gothic Rock", "Darkwave", "Post-Punk", "EBM", "Industrial",
+    "New Wave", "Synthpop", "Electronic", "Ambient",
+    "Shoegaze", "Coldwave", "Neofolk", "Death Rock", "Goth",
+    "Witch House", "Minimal Wave", "Power Electronics",
+    "Noise",
+}
+
 GENRE_NEIGHBORS: dict[str, list[str]] = {
-    "Gothic Rock":      ["Post-Punk", "Darkwave", "New Wave", "Alternative Rock"],
-    "Darkwave":         ["Gothic Rock", "Post-Punk", "Synthpop", "EBM", "Ambient"],
+    "Gothic Rock":      ["Post-Punk", "Darkwave", "New Wave", "Alternative Rock", "Death Rock"],
+    "Darkwave":         ["Gothic Rock", "Post-Punk", "Synthpop", "EBM", "Ambient", "Coldwave"],
     "Post-Punk":        ["Gothic Rock", "Darkwave", "New Wave", "Alternative Rock", "Punk"],
     "EBM":              ["Industrial", "Synthpop", "Electronic", "Darkwave"],
-    "Industrial":       ["EBM", "Electronic", "Metal", "Hard Rock"],
-    "New Wave":         ["Synthpop", "Post-Punk", "Gothic Rock", "Pop"],
-    "Synthpop":         ["New Wave", "EBM", "Darkwave", "Electronic", "Pop"],
+    "Industrial":       ["EBM", "Electronic", "Metal", "Hard Rock", "Noise"],
+    "New Wave":         ["Synthpop", "Post-Punk", "Gothic Rock"],
+    "Synthpop":         ["New Wave", "EBM", "Darkwave", "Electronic"],
     "Electronic":       ["EBM", "Industrial", "Ambient", "Synthpop"],
-    "Ambient":          ["Electronic", "Darkwave", "Classical", "Soundtrack"],
-    "Rock":             ["Alternative Rock", "Classic Rock", "Hard Rock", "Indie Rock"],
+    "Ambient":          ["Electronic", "Darkwave", "Soundtrack"],
+    "Rock":             ["Alternative Rock", "Hard Rock", "Punk"],
     "Alternative Rock": ["Rock", "Indie Rock", "Post-Punk", "Punk"],
-    "Indie Rock":       ["Alternative Rock", "Rock", "Post-Punk", "Folk"],
-    "Classic Rock":     ["Rock", "Hard Rock", "Folk"],
-    "Hard Rock":        ["Rock", "Metal", "Classic Rock"],
+    "Indie Rock":       ["Alternative Rock", "Rock", "Post-Punk"],
+    "Hard Rock":        ["Rock", "Metal", "Punk"],
     "Punk":             ["Post-Punk", "Alternative Rock", "Hard Rock"],
     "Metal":            ["Hard Rock", "Industrial", "Punk"],
-    "Pop":              ["Synthpop", "New Wave", "Electronic", "Rock"],
-    "Folk":             ["Indie Rock", "Alternative Rock", "Classic Rock"],
-    "Soundtrack":       ["Ambient", "Electronic", "Classical"],
-    "Hip-Hop":          ["Electronic", "Pop"],
-    "Comedy":           ["Pop", "Other"],
+    "Shoegaze":         ["Darkwave", "Post-Punk", "Gothic Rock", "Ambient"],
+    "Coldwave":         ["Darkwave", "Post-Punk", "EBM"],
+    "Neofolk":          ["Ambient", "Gothic Rock", "Darkwave"],
+    "Death Rock":       ["Gothic Rock", "Punk", "Post-Punk"],
+    "Noise":            ["Industrial", "Electronic"],
+    "Witch House":      ["Darkwave", "Electronic", "Ambient"],
+    "Soundtrack":       ["Ambient", "Electronic"],
     "Classical":        ["Ambient", "Soundtrack"],
+    "Folk":             ["Indie Rock", "Alternative Rock"],
+    "Pop":              [],   # dead end — never bridge to pop
+    "Hip-Hop":          [],
+    "Comedy":           [],
     "Other":            [],
 }
 
@@ -264,40 +314,101 @@ def transition_type(src: Track, dst: Track) -> str:
     return "BLEND"
 
 
+# ── Lyrical theme compatibility ───────────────────────────────────────────────
+# Clusters of emotionally adjacent themes — same cluster = full bonus,
+# adjacent cluster = half bonus, unrelated = no bonus.
+# "surreal" is a wildcard: compatible with everything.
+THEME_CLUSTERS: list[set[str]] = [
+    {"loss", "isolation", "nostalgia", "alienation"},
+    {"love", "loss", "longing"},
+    {"anger", "rebellion", "power"},
+    {"darkness", "death", "spirituality"},
+    {"euphoria", "love"},
+    {"identity", "alienation", "isolation"},
+]
+
+def theme_compat(t1: str | None, t2: str | None) -> float:
+    """1.0 = same theme, 0.5 = adjacent cluster, 0.0 = unrelated. Surreal = 0.5 always."""
+    if not t1 or not t2:
+        return 0.0          # no data → no effect
+    if t1 == t2:
+        return 1.0
+    if "surreal" in (t1, t2):
+        return 0.5
+    for cluster in THEME_CLUSTERS:
+        if t1 in cluster and t2 in cluster:
+            return 1.0      # same cluster
+    # Check adjacent clusters (share at least one member in common)
+    clusters1 = [c for c in THEME_CLUSTERS if t1 in c]
+    clusters2 = [c for c in THEME_CLUSTERS if t2 in c]
+    for c1 in clusters1:
+        for c2 in clusters2:
+            if c1 & c2:     # overlapping clusters → adjacent
+                return 0.5
+    return 0.0
+
+
+def _theme(path: str) -> str | None:
+    """Return lyric theme for a track path, or None."""
+    entry = LYRICS.get(path)
+    return entry.get("theme") or None if entry else None
+
+
 # ── Block suggestions ─────────────────────────────────────────────────────────
 
+def _song_key(t: Track) -> str:
+    """Dedup key — same artist+title = same song regardless of file/version."""
+    return f"{t.artist.lower().strip()}\t{t.title.lower().strip()}"
+
+
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
-    results = []
+    anchor_theme = _theme(anchor.path)
+    best: dict[str, tuple[float, Track]] = {}  # song_key → (score, track)
     for t in tracks:
         if t.path == anchor.path: continue
-        gf = 1.0 if t.genre == anchor.genre else genre_compat(anchor.genre, t.genre) * 0.5
+        if SHOW_GENRES is not None and t.genre not in SHOW_GENRES: continue
+        gf  = 1.0 if t.genre == anchor.genre else genre_compat(anchor.genre, t.genre) * 0.5
+        tc  = theme_compat(anchor_theme, _theme(t.path))
+        cg  = 1.0 if t.genre in CORE_GENRES else 0.4   # mainstream penalty
         score = (
-            0.35 * bpm_compat(anchor.bpm, t.bpm) +
-            0.35 * key_compat(anchor.key, t.key) +
-            0.20 * gf +
-            0.10 * (t.stars / 5.0)
+            0.33 * bpm_compat(anchor.bpm, t.bpm) +
+            0.28 * key_compat(anchor.key, t.key) +
+            0.17 * gf +
+            0.10 * (t.stars / 5.0) +
+            0.07 * cg +
+            0.05 * tc
         )
-        results.append((score, t))
-    results.sort(key=lambda x: -x[0])
+        key = _song_key(t)
+        if key not in best or score > best[key][0]:
+            best[key] = (score, t)
+    results = sorted(best.values(), key=lambda x: -x[0])
     return [t.to_dict(s, transition_type(anchor, t)) for s, t in results[:n] if s > 0.1]
 
 
 def suggest_slot3(slot2: Track, anchor: Track, tracks: list[Track]) -> list[dict]:
-    dest_genres = GENRE_NEIGHBORS.get(anchor.genre, [])
+    genre_filter = SHOW_GENRES if SHOW_GENRES is not None else CORE_GENRES
+    dest_genres  = [g for g in GENRE_NEIGHBORS.get(anchor.genre, []) if g in genre_filter]
     if not dest_genres:
-        all_genres  = list({t.genre for t in tracks if t.genre})
+        all_genres  = list({t.genre for t in tracks if t.genre and t.genre in genre_filter})
         dest_genres = [g for g in all_genres if g != anchor.genre][:8]
-    exclude = {anchor.path, slot2.path}
-    groups  = []
+    exclude      = {anchor.path, slot2.path}
+    anchor_theme = _theme(anchor.path)
+    groups       = []
     for dest in dest_genres:
-        candidates = []
+        best: dict[str, tuple[float, Track]] = {}
         for t in tracks:
             if t.path in exclude: continue
+            if SHOW_GENRES is not None and t.genre not in SHOW_GENRES: continue
             mix    = 0.5 * bpm_compat(slot2.bpm, t.bpm) + 0.5 * key_compat(slot2.key, t.key)
             bridge = 1.0 if t.genre == dest else (
                      0.5 if dest in GENRE_NEIGHBORS.get(t.genre, []) else 0.0)
-            candidates.append((0.55 * mix + 0.45 * bridge, t))
-        candidates.sort(key=lambda x: -x[0])
+            tc     = theme_compat(anchor_theme, _theme(t.path))
+            cg     = 1.0 if t.genre in CORE_GENRES else 0.4
+            score  = 0.47 * mix + 0.38 * bridge + 0.10 * cg + 0.05 * tc
+            key    = _song_key(t)
+            if key not in best or score > best[key][0]:
+                best[key] = (score, t)
+        candidates = sorted(best.values(), key=lambda x: -x[0])
         top = [(s, t) for s, t in candidates[:3] if s > 0.25]
         if top:
             groups.append({"destination": dest,
@@ -528,6 +639,10 @@ def print_suggestions(
     key_str   = _CYN + anchor.key + _R
     gre_str   = _GRY + anchor.genre + _R
 
+    lyr = lyrics_for(anchor.path)
+    sflag = song_flag_for(anchor.artist, anchor.title)
+    rep   = reputation_for(anchor.artist)
+
     lines += [
         _HDR,
         f"  {deck_tag}{_WHT}{anchor.artist} — {anchor.title}{_R}",
@@ -535,6 +650,18 @@ def print_suggestions(
         _HDR,
         "",
     ]
+    if lyr and lyr.get("summary"):
+        theme_str = f"  [{lyr['theme']}]" if lyr.get("theme") else ""
+        lines.append(f"  {_GRY}♪ {lyr['summary']}{theme_str}{_R}")
+        if lyr.get("flags"):
+            lines.append(f"  \033[95m⚠ LYRIC FLAGS: {', '.join(lyr['flags'])}{_R}")
+    if sflag:
+        lines.append(f"  \033[93m⚠ THIS SONG: {sflag}{_R}")
+    if rep:
+        tier_col = "\033[91m" if rep["tier"]=="convicted" else ("\033[92m" if rep["tier"]=="settled" else "\033[93m")
+        lines.append(f"  {tier_col}⚠ ARTIST ({rep['tier'].upper()}): {rep['summary']}{_R}")
+    if lyr or sflag or rep:
+        lines.append("")
 
     # ── Slot 2 — Lock ────────────────────────────────────────────────────────
     lines.append(f"  {_WHT}LOCK — PLAY NEXT{_R}  "
@@ -671,7 +798,7 @@ def start_lsof_watcher(
     tracks: list,
     index: dict,
     osc_state,
-    interval: float = 1.5,
+    interval: float = 2.0,
 ) -> None:
     """
     Poll lsof every `interval` seconds.  When Traktor opens a new audio file,
@@ -899,10 +1026,51 @@ HTML = r"""<!DOCTYPE html>
 <title>DJ Block Planner</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column}
-#hdr{background:#0d0d1a;padding:10px 18px;border-bottom:2px solid #e63946;display:flex;align-items:center;gap:16px;flex-shrink:0}
-#hdr h1{color:#e63946;font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
-#hdr small{color:#888;font-size:11px}
+/* ── Dark mode (default) ── */
+:root{
+  --bg:        #111;
+  --bg2:       #0d0d1a;
+  --bg3:       #0a0a0a;
+  --bg4:       #1a1a1a;
+  --border:    #1a1a1a;
+  --border2:   #2d2d2d;
+  --text:      #ddd;
+  --text2:     #888;
+  --text3:     #555;
+  --text4:     #444;
+  --accent:    #e63946;
+  --card-bg:   #161616;
+  --card-sel:  #1a1a2e;
+  --card-bdr:  #2a2a4a;
+  --meta:      #666;
+  --lyric:     #4a5568;
+}
+/* ── Light mode (outdoor) ── */
+body.light{
+  --bg:        #f0ede8;
+  --bg2:       #e8e4de;
+  --bg3:       #e2ddd7;
+  --bg4:       #d8d3cc;
+  --border:    #c8c3bc;
+  --border2:   #b8b3ac;
+  --text:      #1a1a1a;
+  --text2:     #444;
+  --text3:     #666;
+  --text4:     #888;
+  --accent:    #c0392b;
+  --card-bg:   #ebe7e1;
+  --card-sel:  #ddd8f0;
+  --card-bdr:  #9b8ec4;
+  --meta:      #555;
+  --lyric:     #6b7280;
+}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
+#hdr{background:var(--bg2);padding:10px 18px;border-bottom:2px solid var(--accent);display:flex;align-items:center;gap:16px;flex-shrink:0}
+#hdr h1{color:var(--accent);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
+#hdr small{color:var(--text2);font-size:11px}
+/* Theme toggle button */
+#theme-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 8px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;letter-spacing:.5px;flex-shrink:0}
+#theme-btn:hover{border-color:var(--text2);color:var(--text)}
 #osc-status{font-size:10px;padding:3px 8px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
 #osc-status.on{background:#14532d;color:#4ade80}
 #osc-status.off{background:#1e293b;color:#555}
@@ -916,6 +1084,68 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .panic-btn{border:none;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;transition:opacity .1s}
 #save-btn{background:#7f1d1d;color:#fca5a5}#save-btn:hover{background:#991b1b}
 #surprise-btn{background:#1e3a5f;color:#93c5fd}#surprise-btn:hover{background:#1d4ed8}
+#show-btn{background:#1a1a1a;color:#a78bfa;border:1px solid #3b2d6e;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px}
+#show-btn:hover{background:#1e1b40;border-color:#7c3aed}
+#show-btn.filtered{background:#1e1b40;color:#c4b5fd;border-color:#7c3aed;box-shadow:0 0 6px #7c3aed44}
+/* Show Config Modal */
+#show-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:flex-start;justify-content:center;padding-top:60px}
+#show-modal-overlay.open{display:flex}
+#show-modal{background:#0d0d0d;border:1px solid #2d2d2d;border-radius:6px;padding:20px 24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;font-size:12px}
+#show-modal h2{color:#c4b5fd;font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:0 0 16px;font-weight:600}
+.show-profiles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.profile-btn{background:#111;color:#888;border:1px solid #2a2a2a;padding:5px 14px;border-radius:12px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:.5px;transition:all .1s}
+.profile-btn:hover{border-color:#7c3aed;color:#c4b5fd}
+.profile-btn.active{background:#1e1b40;color:#c4b5fd;border-color:#7c3aed}
+.genre-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:16px}
+.genre-chk{display:flex;align-items:center;gap:6px;cursor:pointer;color:#888;font-size:11px;padding:4px 6px;border-radius:3px}
+.genre-chk:hover{background:#1a1a1a;color:#ccc}
+.genre-chk input{accent-color:#7c3aed;cursor:pointer}
+.genre-chk.checked{color:#ccc}
+#show-apply{background:#3b2d6e;color:#c4b5fd;border:1px solid #7c3aed;padding:7px 20px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;font-weight:bold;letter-spacing:1px;width:100%}
+#show-apply:hover{background:#4c1d95}
+/* ── Light mode overrides ── */
+body.light #deck-bar{background:#ddd8d0;border-bottom-color:#b8b3ac}
+body.light #osc-status.off{background:#d0ccc5;color:#777}
+body.light .deck-pill{border-color:#b8b3ac;color:#666}
+body.light .deck-pill.loaded{border-color:#888;color:#444;background:#d8d3cc}
+body.light #deck-msg{color:#666}
+body.light #swap-btn{background:#d8d3cc;color:#444;border-color:#b0ab a4}
+body.light #swap-btn:hover{background:#c8c3bc;color:#222}
+body.light #search-wrap{background:#e8e4de;border-bottom-color:#c8c3bc}
+body.light #q{background:#f5f2ee;color:#222;border-color:#b8b3ac}
+body.light #results{background:#ebe7e1;border-color:#b8b3ac}
+body.light .r{border-bottom-color:#d8d3cc}.body.light .r:hover{background:#ddd8d0}
+body.light .r .ra{color:#555}.body.light .r .rt{color:#111}
+body.light #cols{background:#c8c3bc}
+body.light .col{background:#ede9e3}
+body.light .col-hdr{border-bottom-color:#d8d3cc}
+body.light #c1 .col-hdr{color:#c0392b}
+body.light #c2 .col-hdr{color:#d4650a}
+body.light #c3 .col-hdr{color:#1a7fa0}
+body.light .anchor-box{background:#f5ddd8;border-color:#c0392b}
+body.light .anchor-box .an .aa{color:#c0392b}
+body.light .anchor-box .an .at{color:#111}
+body.light .tk{border-color:#d8d3cc;background:#ede9e3}
+body.light .tk:hover{border-color:#999;background:#e0dbd4}
+body.light .tk.sel{border-color:#d4650a;background:#fff0e0}
+body.light .tk .ta{color:#444}.body.light .tk .tt{color:#111}
+body.light .bpm{color:#b85a00}
+body.light .key{color:#1a6080}
+body.light .gen{color:#555}
+body.light .scr{color:#2a7a3a}
+body.light .lyric-summary{color:#777}
+body.light .meta{color:#555}
+body.light .bg-dest{color:#1a7fa0;border-left-color:#1a7fa0}
+body.light .empty{color:#888}
+body.light #rescue-box{background:#ede9e3;border-color:#c8c3bc}
+body.light #activity-bar{background:#ddd8d0;border-bottom-color:#c8c3bc}
+body.light .act-label{color:#b85a00}
+body.light .act-track{color:#333}
+body.light .act-bar-wrap{background:#c8c3bc}
+body.light #show-modal{background:#ebe7e1;border-color:#c8c3bc}
+body.light .profile-btn{background:#e2ddd7;color:#444;border-color:#c8c3bc}
+body.light .genre-chk{color:#555}
+body.light .genre-chk:hover{background:#d8d3cc;color:#222}
 #rescue-box{background:#111;border:1px solid #333;border-radius:4px;padding:10px 14px;margin:8px 18px;display:none}
 #rescue-box .r-label{font-size:9px;letter-spacing:2px;color:#666;margin-bottom:5px;text-transform:uppercase}
 #rescue-box .r-track{font-size:13px;cursor:pointer}
@@ -946,7 +1176,7 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
-.lyric-summary{font-size:11px;color:#555;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.lyric-summary{font-size:11px;color:#8a8fa8;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
 .tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
@@ -989,6 +1219,7 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
   <h1>♪ DJ Block Planner</h1>
   <small id="tc">loading…</small>
   <span id="osc-status" class="off">OSC OFF</span>
+  <button id="theme-btn" onclick="toggleTheme()" title="Switch between dark (indoor) and light (outdoor) mode">☀</button>
 </div>
 <div id="deck-bar">
   <span class="deck-pill" id="pill-a">DECK A</span>
@@ -997,6 +1228,16 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
   <span id="deck-msg">Waiting for Traktor… or search below</span>
   <button class="panic-btn" id="save-btn" onclick="rescueMe('save')" title="Best rated floor track near current BPM/genre">🚨 Save Me</button>
   <button class="panic-btn" id="surprise-btn" onclick="rescueMe('surprise')" title="Highly rated track you haven't played tonight">✨ Surprise Me</button>
+  <button id="show-btn" onclick="openShowConfig()" title="Configure show genre filter">🎛 Show Setup</button>
+</div>
+<!-- Show Config Modal -->
+<div id="show-modal-overlay" onclick="closeShowConfig(event)">
+  <div id="show-modal">
+    <h2>🎛 Show Genre Setup</h2>
+    <div class="show-profiles" id="show-profiles"></div>
+    <div class="genre-grid" id="genre-grid"></div>
+    <button id="show-apply" onclick="applyShowConfig()">Apply</button>
+  </div>
 </div>
 <div id="activity-bar">
   <span class="act-label" id="act-label">PROCESSING</span>
@@ -1032,6 +1273,119 @@ let SR=[],S2=[],anchor=null,slot2=null,oscActive=false;
 // Per-deck resolved track objects (or null if empty / not found in collection)
 let deckTracks={a:null,b:null};
 let deckPlaying={a:false,b:false};
+
+// ── Theme toggle (dark ↔ light) ───────────────────────────────────────────────
+(function(){
+  if(localStorage.getItem('theme')==='light'){
+    document.body.classList.add('light');
+    document.getElementById('theme-btn').textContent='🌙';
+  }
+})();
+function toggleTheme(){
+  const light=document.body.classList.toggle('light');
+  document.getElementById('theme-btn').textContent=light?'🌙':'☀';
+  localStorage.setItem('theme',light?'light':'dark');
+}
+
+// ── Show Genre Config ─────────────────────────────────────────────────────────
+const ALL_GENRES=[
+  "Gothic Rock","Darkwave","Post-Punk","EBM","Industrial",
+  "New Wave","Synthpop","Electronic","Ambient",
+  "Shoegaze","Coldwave","Neofolk","Death Rock","Goth",
+  "Witch House","Minimal Wave","Power Electronics","Noise",
+  "Alternative Rock","Punk","Hard Rock","Metal","Indie Rock","Rock",
+];
+const SHOW_PROFILES={
+  "Pure Goth":     ["Gothic Rock","Post-Punk","Darkwave","Death Rock","Goth","Shoegaze","Coldwave","Neofolk"],
+  "Goth Industrial":["Gothic Rock","Darkwave","Post-Punk","EBM","Industrial","New Wave","Synthpop","Electronic","Ambient","Shoegaze","Coldwave","Neofolk","Death Rock","Goth","Witch House","Minimal Wave","Power Electronics","Noise"],
+  "Dark Electronic":["EBM","Industrial","Electronic","Synthpop","Minimal Wave","Power Electronics","Witch House","Noise","Darkwave","Ambient"],
+  "Open Floor":    null,
+};
+let _showCfgGenres=null; // mirrors server state; null=no filter
+
+function buildShowModal(){
+  // Profile buttons
+  const pDiv=document.getElementById('show-profiles');
+  pDiv.innerHTML='';
+  for(const [name,genres] of Object.entries(SHOW_PROFILES)){
+    const b=document.createElement('button');
+    b.className='profile-btn';b.textContent=name;
+    b.onclick=()=>{
+      if(genres===null){
+        document.querySelectorAll('.genre-chk input').forEach(c=>c.checked=false);
+      } else {
+        document.querySelectorAll('.genre-chk input').forEach(c=>{
+          c.checked=genres.includes(c.value);
+          c.closest('.genre-chk').classList.toggle('checked',c.checked);
+        });
+      }
+      document.querySelectorAll('.profile-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+    };
+    pDiv.appendChild(b);
+  }
+  // Genre checkboxes
+  const gDiv=document.getElementById('genre-grid');
+  gDiv.innerHTML='';
+  ALL_GENRES.forEach(g=>{
+    const checked=_showCfgGenres===null?false:_showCfgGenres.includes(g);
+    const lbl=document.createElement('label');
+    lbl.className='genre-chk'+(checked?' checked':'');
+    lbl.innerHTML=`<input type="checkbox" value="${g}"${checked?' checked':''}> ${g}`;
+    lbl.querySelector('input').onchange=e=>{
+      lbl.classList.toggle('checked',e.target.checked);
+      document.querySelectorAll('.profile-btn').forEach(x=>x.classList.remove('active'));
+    };
+    gDiv.appendChild(lbl);
+  });
+  // Highlight active profile
+  syncProfileHighlight();
+}
+function syncProfileHighlight(){
+  const checked=[...document.querySelectorAll('.genre-chk input:checked')].map(c=>c.value).sort().join(',');
+  document.querySelectorAll('.profile-btn').forEach(b=>{
+    const pGenres=SHOW_PROFILES[b.textContent];
+    const pKey=pGenres===null?'':([...pGenres]).sort().join(',');
+    b.classList.toggle('active', pGenres===null?checked==='':checked===pKey);
+  });
+}
+async function openShowConfig(){
+  // Fetch current server state
+  const r=await fetch('/api/show-config');
+  const d=await r.json();
+  _showCfgGenres=d.genres;
+  buildShowModal();
+  document.getElementById('show-modal-overlay').classList.add('open');
+}
+function closeShowConfig(e){
+  if(e&&e.target!==document.getElementById('show-modal-overlay'))return;
+  document.getElementById('show-modal-overlay').classList.remove('open');
+}
+async function applyShowConfig(){
+  const checked=[...document.querySelectorAll('.genre-chk input:checked')].map(c=>c.value);
+  // If none checked, treat as open floor
+  const payload={genres: checked.length?checked:null};
+  await fetch('/api/show-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  _showCfgGenres=payload.genres;
+  const btn=document.getElementById('show-btn');
+  if(payload.genres===null){
+    btn.textContent='🎛 Show Setup';btn.classList.remove('filtered');
+  } else {
+    btn.textContent=`🎛 ${payload.genres.length} genres`;btn.classList.add('filtered');
+  }
+  document.getElementById('show-modal-overlay').classList.remove('open');
+  toast('Show config applied');
+}
+// Init: fetch current config on load to reflect server state
+(async()=>{
+  try{
+    const r=await fetch('/api/show-config');
+    const d=await r.json();
+    _showCfgGenres=d.genres;
+    const btn=document.getElementById('show-btn');
+    if(d.genres&&d.genres.length){btn.textContent=`🎛 ${d.genres.length} genres`;btn.classList.add('filtered');}
+  }catch(e){}
+})();
 
 const q=document.getElementById('q'),
       res=document.getElementById('results'),
@@ -1080,11 +1434,16 @@ function txBadge(t){
   return`<span class="tx tx-${TX_CLASS[t.transition]||'cut'}">${t.transition}</span>`;
 }
 function repBadge(t){
-  if(!t.rep_tier)return'';
-  const cls=`rep-${t.rep_tier}`;
-  const icon=t.rep_tier==='convicted'?'🔴 CONVICTED':t.rep_tier==='settled'?'🟢 SETTLED':'⚠ ACCUSED';
-  const tip=esc(t.rep_summary||'');
-  return`<span class="${cls}" title="${tip}">${icon}</span>`;
+  let out='';
+  if(t.rep_tier){
+    const cls=`rep-${t.rep_tier}`;
+    const icon=t.rep_tier==='convicted'?'🔴 CONVICTED':t.rep_tier==='settled'?'🟢 SETTLED':'⚠ ACCUSED';
+    out+=`<span class="${cls}" title="${esc(t.rep_summary||'')}">${icon}</span>`;
+  }
+  if(t.song_flag){
+    out+=`<span class="rep-accused" title="${esc(t.song_flag)}" style="background:#1a1a00;color:#fde68a">⚠ THIS SONG</span>`;
+  }
+  return out;
 }
 function lyricBadges(t){
   if(!t.lyric_flags||!t.lyric_flags.length)return'';
@@ -1212,11 +1571,15 @@ async function restoreDeckStatus(){
     const s=await fetch('/api/deck-status').then(r=>r.json());
     if(s.a) await _resolveAndStoreDeck('a',s.a.title,s.a.artist);
     if(s.b) await _resolveAndStoreDeck('b',s.b.title,s.b.artist);
-    if(s.playing_a){deckPlaying.a=true;pillA.className='deck-pill playing';}
+    let anchorDeck=null;
+    if(s.playing_a){deckPlaying.a=true;pillA.className='deck-pill playing';anchorDeck='a';}
     else if(s.a){pillA.className='deck-pill loaded';}
-    if(s.playing_b){deckPlaying.b=true;pillB.className='deck-pill playing';}
+    if(s.playing_b){deckPlaying.b=true;pillB.className='deck-pill playing';if(!anchorDeck)anchorDeck='b';}
     else if(s.b){pillB.className='deck-pill loaded';}
+    if(!anchorDeck&&s.a) anchorDeck='a';
     renderDeckCards();
+    // Fire full suggestion pipeline for whichever deck is active
+    if(anchorDeck&&deckTracks[anchorDeck]) await loadAnchor(deckTracks[anchorDeck],anchorDeck);
   }catch(err){}
 }
 
@@ -1488,6 +1851,26 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
         LYRICS = load_lyrics_index(LYRICS_INDEX)
         return jsonify({"loaded": len(LYRICS), "flagged": sum(1 for v in LYRICS.values() if v.get("flags"))})
 
+    @app.route("/api/show-config", methods=["GET", "POST"])
+    def show_config():
+        """
+        GET  → return current SHOW_GENRES list (null = open floor / no filter)
+        POST → set SHOW_GENRES.  Body: {"genres": [...]} or {"genres": null}
+        """
+        global SHOW_GENRES
+        if request.method == "POST":
+            body = request.get_json(force=True)
+            genres = body.get("genres")
+            if genres is None:
+                SHOW_GENRES = None
+            else:
+                SHOW_GENRES = set(genres)
+            label = "Open Floor" if SHOW_GENRES is None else f"{len(SHOW_GENRES)} genres"
+            print(f"  [show-config] SHOW_GENRES set → {label}")
+        return jsonify({
+            "genres": sorted(SHOW_GENRES) if SHOW_GENRES is not None else None
+        })
+
     @app.route("/api/activity")
     def activity():
         """Return current background task progress, or null if idle."""
@@ -1608,7 +1991,7 @@ def main():
     # ── lsof deck watcher — detects Traktor track loads automatically ─────────
     index = {t.path: t for t in tracks}
     start_lsof_watcher(tracks, index, osc_state)
-    print(f"  Deck watcher: polling Traktor every 1.5s via lsof")
+    print(f"  Deck watcher: polling Traktor every 2s via lsof")
 
     flask_thread = threading.Thread(
         target=lambda: app.run(host="127.0.0.1", port=PORT,

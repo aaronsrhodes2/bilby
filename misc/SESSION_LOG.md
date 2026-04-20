@@ -72,6 +72,40 @@ SKIPPY: Fixed all three issues. Stage 4 ran — 50,565 files copied, 113 skipped
 
 ---
 
+## SESSION 3 — April 18, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Make the text much more visible against the black background. Below the searched selection I would love to also be able to select the currently loaded deck A and deck B songs. Currently no reaction from loading songs into Traktor decks, even when reloading the browser.
+
+SKIPPY: Brightened all text colors throughout — genre #aaa, artist #ccc, empty state #666, track count #888, separators #555. Added Deck A / Deck B clickable cards in the Slot 1 column. Two-card grid below the anchor box shows what's loaded in each deck, BPM / key / genre, glows red when playing. Click either card to set it as anchor and fire suggestions. Added /api/deck-status endpoint + OSCState.get_loaded() / get_playing() for state restore.
+
+CAPTAIN: Too dark, I need to be able to read it. Did not load new tracks yet. What's next?
+
+SKIPPY: Bumped idle card colors further — labels #777, "Nothing loaded" #777 italic, borders visible at #2a2a2a. Explained OSC Controller Manager setup is the next step. 6 OUT mappings needed: title/artist/play × Deck A and B.
+
+CAPTAIN: Okay go for it.
+
+SKIPPY: Tried AppleScript automation — process name is "Traktor Pro 4," but Terminal lacks Accessibility access so click scripting was blocked. Walked Captain through Controller Manager manually instead. Captain was on the right page.
+
+CAPTAIN: Nope, too late at night to start it. We are good for now.
+
+**Key decisions made:**
+- SSE reconnect now calls /api/deck-status to restore deck card state without a page reload — user should never need to reload the browser
+- Deck A/B cards live in the Slot 1 column, clickable to set as anchor
+- OSC wiring deferred to next session (Traktor Pro 4 process, Controller Manager, 6 OUT mappings on port 9000)
+
+**Notable moments:**
+- AppleScript process name is "Traktor Pro 4" not "Traktor 4" — filed for next session
+- Terminal accessibility access not granted; scripted UI automation blocked
+- The Captain closed Preferences without touching anything — collection intact
+
+**Files modified:**
+- stage9_dj_suggest.py — text visibility, deck A/B cards, /api/deck-status, OSCState.get_loaded/get_playing, SSE reconnect restore
+
+---
+
 ## SESSION 2 — April 18–19, 2026
 **Players:** Captain Aaron Rhodes, Skippy the Magnificent
 
@@ -136,5 +170,62 @@ CAPTAIN: Okay that is nice. Oh my word, it's WAY better than I expected. Check i
 - stage9_dj_suggest.py (new — full DJ Block Planner)
 - .gitignore (credential files + suggestions/)
 - Both collection.nml files (BPM corrections, color stripes, genre fixes, star ratings)
+
+---
+
+## SESSION 4 — April 19–20, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Build a lyrics pipeline — PC does the heavy lifting with Qwen, Mac pulls and hot-reloads. Also fix genre "Other" bucket, add a show genre filter, and make the lyric summaries readable.
+
+SKIPPY: Built the full lyrics stack — PC tool fetches lyrics.ovh → Qwen2.5:14b → summaries+flags, commits to GitHub. Mac pulls and hot-reloads via /api/reload-lyrics. Built lyric theme scoring (14 themes, THEME_CLUSTERS adjacency) feeding into slot2/slot3 scoring at 5% weight. Theme and summary display in terminal and browser.
+
+CAPTAIN: The PC is done. Pull it in.
+
+SKIPPY: PC had pushed to a branch (claude/upbeat-haslett-77de35) — 10,892 summaries in list format. Converted to dkey dict, filtered invalid "bigotry" flags, built lyrics_index.json (path-keyed) from NML track mapping. 13,362 tracks now indexed. Hot-reloaded live.
+
+CAPTAIN: Genre "Other" has 508 tracks — :wumpscut: obviously shouldn't be there.
+
+SKIPPY: Built tools/fix_other_genres.py — Last.fm artist.gettoptags lookup for all 173 unique "Other" artists, first-match strategy (top tag wins, preserving Last.fm relevance order). 467 tracks reclassified in corrected_traktor NML and audio files, 467 in live Traktor 4.0.2 NML. :wumpscut: (76 tracks) → Industrial. Funker Vogt → EBM. Dead Can Dance → Ambient. Cookie Monster → Comedy. 41 genuinely Other remain (audiobooks, sound effects, personal demos).
+
+CAPTAIN: No punk, pop, rock, metal, rap for tonight's show. Set that as the default and give me a UI to change it.
+
+SKIPPY: Added SHOW_GENRES hard filter (18 goth/darkwave/industrial genres — no punk, rock, metal, pop, hip-hop). Hard-exclude in suggest_slot2/slot3, dest_genres fallback also filtered. Also fixed the fallback bug — was letting non-core genres through. /api/show-config GET/POST endpoint. Browser: 🎛 Show Setup button → modal with pre-set profiles (Pure Goth, Goth Industrial, Dark Electronic, Open Floor) + per-genre checkboxes. Apply mid-set, no restart.
+
+CAPTAIN: The summaries are too dark to read against the black background.
+
+SKIPPY: .lyric-summary color #555 → #8a8fa8. Also added ☀/🌙 theme toggle (dark → warm off-white for outdoor readability), persists via localStorage.
+
+CAPTAIN: Push the missing lyrics task to the PC as a side project.
+
+SKIPPY: Built tools/fetch_missing_lyrics_pc.py — Genius API phase (lyricsgenius) then Whisper STT phase (faster-whisper, falls back to openai-whisper) for tracks with no online lyrics. 9,301 tracks still need coverage.
+
+**Key decisions made:**
+- SHOW_GENRES = hard filter (exclude), not penalty — genres outside the set never appear in suggestions
+- dest_genres fallback in suggest_slot3 now filters to genre_filter (SHOW_GENRES or CORE_GENRES) — no mainstream genres via fallback path
+- lyrics_index.json = path-keyed (server); lyrics_dedup.json = dkey-keyed (pipeline/PC). Both maintained.
+- Last.fm tag lookup uses first-match strategy (top tag wins) — TAXONOMY_INDEX priority was wrong for this use case
+- PC branch had "bigotry" flag not in our taxonomy — filtered on import
+- Light mode CSS uses :root variables + body.light overrides (not a full variable migration)
+
+**Notable moments:**
+- :wumpscut: was in "Other" — 76 tracks. Last.fm top tag: "industrial". Fixed in both NMLs and audio files.
+- Cookie Monster correctly classified as Comedy; Kermit the Frog was being tagged Metal (black metal joke tag on Last.fm) — fixed.
+- PC's qwen2.5:14b flagged 17% of the collection — including 16volt "Two Wires Thin" as extreme_violence for "electrical torment" imagery. Over-flagged but valid flags kept, invalid "bigotry" flag stripped.
+- The Captain said "Summaries too dark" meaning the text COLOR, not the content — #555 on #111 is nearly invisible. Classic contrast error.
+- lyric summaries + theme scoring now active and showing in the live browser
+
+**Files modified:**
+- stage9_dj_suggest.py — SHOW_GENRES, /api/show-config, Show Setup modal, lyric contrast fix, light/dark theme toggle, dest_genres fallback fix
+- stage9_lyrics.py — prompt unchanged (reverted accidental edit)
+- tools/fix_other_genres.py — new
+- tools/fetch_missing_lyrics_pc.py — new
+- tools/lyrics_analyzer_pc.py — prompt unchanged (reverted)
+- corrected_traktor/collection.nml — 461 genre changes
+- Traktor 4.0.2/collection.nml — 467 genre changes (live collection)
+- state/lyrics_dedup.json — 10,892 PC summaries merged
+- state/lyrics_index.json — 13,362 path-keyed entries built
 
 ---

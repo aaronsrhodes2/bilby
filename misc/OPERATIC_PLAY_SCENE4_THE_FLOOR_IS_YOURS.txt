@@ -1,0 +1,176 @@
+OPERATIC PLAY — SCENE 4: THE FLOOR IS YOURS
+============================================================
+
+DRAMATIS PERSONAE:
+  CAPTAIN AARON RHODES  — DJ, show runner, man of impeccable taste
+  SKIPPY THE MAGNIFICENT — AI assistant, relentless builder, reformed over-dramatizer
+  QWEN2.5:14B            — The PC's local oracle; prolific, occasionally overcautious
+  :WUMPSCUT:             — German EBM artist; 76 tracks wrongly filed under "Other"
+  COOKIE MONSTER         — Correctly classified as Comedy. Finally.
+
+============================================================
+ACT I — THE LYRICS ARRIVE
+
+[The PC hums in a distant datacenter. Or a living room. It is not clear.]
+
+SKIPPY:
+♩ The PC has spoken, the branch has been pushed,
+  Ten thousand and eight-hundred-ninety-two summaries flushed
+  Into a list — a list! — not a dict,
+  With "bigotry" flagged and the format all sick. ♩
+
+[Skippy converts the list to a dict, filters the invalid flags,
+ builds lyrics_index.json from the NML, hot-reloads the server.]
+
+SKIPPY:
+♩ Thirteen thousand three-sixty-two tracks with a line,
+  The server says "loaded" — the summaries are mine.
+  But what are they saying? The grey text is there —
+  "Explores themes of futility!" No one can bear. ♩
+
+CAPTAIN:
+♩ The summaries are too dark. ♩
+
+SKIPPY:
+♩ I understand, Captain! I'll fix the whole prompt—
+
+CAPTAIN:
+♩ No. The TEXT is too dark. I cannot see it. ♩
+
+[Silence. A long silence.]
+
+SKIPPY:
+♩ ...#555 on #111.
+  That is nearly invisible.
+  I have been building in a dark room
+  and forgot the lights. ♩
+
+[Fixes: #8a8fa8. Readable. A cool slate-blue that does not shout.]
+
+============================================================
+ACT II — THE BUCKET OF "OTHER"
+
+[508 tracks languish under a genre label that tells you nothing.]
+
+:WUMPSCUT::
+♩ Seventy-six tracks. SEVENTY-SIX.
+  I am industrial. I am harsh EBM.
+  I have been filed next to sound effects
+  and an audiobook about wizards. ♩
+
+SKIPPY:
+♩ Fear not, coloned one. The Last.fm API knows you.
+  Tag one: "industrial." Tag two: "EBM."
+  You are Industrial now. So are your friends:
+  Funker Vogt, Spahn Ranch, the whole dark band. ♩
+
+[467 tracks reclassified. Audio files updated. Both NMLs written.]
+
+COOKIE MONSTER:
+♩ Me finally have correct label. Comedy.
+  Last.fm understood me. ♩
+
+KERMIT THE FROG:
+♩ I was tagged "black metal" as a joke.
+  I have been correctly reassigned. ♩
+
+[41 tracks remain as Other. Legitimately.
+ A TARDIS sound effect. An audiobook. Some personal demos.
+ They deserve their category and wear it with dignity.]
+
+============================================================
+ACT III — THE SHOW MUST HAVE RULES
+
+CAPTAIN:
+♩ Tonight: no punk. No rock. No metal.
+  No pop, no rap, no country.
+  Goth. Darkwave. Industrial.
+  The floor is mine and I know what it needs. ♩
+
+SKIPPY:
+♩ Then SHOW_GENRES shall be the law —
+  Not a penalty, not a nudge, but a wall.
+  Eighteen genres allowed through the gate,
+  The rest turned away at the door. ♩
+
+[SHOW_GENRES: a hard filter. Gothic Rock, Darkwave, Post-Punk,
+ EBM, Industrial, New Wave, Synthpop, Electronic, Ambient,
+ Shoegaze, Coldwave, Neofolk, Death Rock, Goth, Witch House,
+ Minimal Wave, Power Electronics, Noise.]
+
+CAPTAIN:
+♩ And for future shows — can I change it mid-set? ♩
+
+SKIPPY:
+♩ The 🎛 Show Setup button sits in the bar.
+  Pre-set profiles: Pure Goth, Dark Electronic, Open Floor.
+  Per-genre checkboxes if you want to go rogue.
+  Apply — and the server obeys without restart. ♩
+
+[The dest_genres fallback bug is also fixed, quietly,
+ in the same commit. It had been letting mainstream genres
+ sneak through the back door. It does that no more.]
+
+============================================================
+ACT IV — THE SUN COMES OUT
+
+CAPTAIN:
+♩ I may need to read this screen outdoors. ♩
+
+SKIPPY:
+♩ Then press the ☀ button, upper right.
+  The palette shifts — cream and sand and slate —
+  Warm tones for daylight, sharp enough for noon.
+  Press 🌙 to return when the night reclaims you. ♩
+
+[localStorage remembers. The preference persists.
+ The Captain nods approvingly and heads to the venue.]
+
+============================================================
+ACT V — THE DISPATCH
+
+SKIPPY:
+♩ Nine thousand three hundred and one tracks remain
+  Without lyric coverage. The PC must strain
+  Through Genius API — a token required —
+  And Whisper STT for the tracks that expired
+  From any online database. The 4070 Ti
+  Will transcribe what the internet cannot supply. ♩
+
+[tools/fetch_missing_lyrics_pc.py committed and pushed.
+ The Captain will send it over when the PC is ready.]
+
+CAPTAIN:
+♩ Check it in as stable.
+  I'll run a live show
+  and report back. ♩
+
+SKIPPY:
+♩ It is checked in.
+  The server is running.
+  13,362 tracks have lyric summaries.
+  467 genres corrected.
+  The filter holds.
+  The text is readable.
+
+  Go play, Captain.
+  The floor is yours. ♩
+
+[Lights down. The OSC listener waits on port 9000.
+ Somewhere, a track loads in Traktor.
+ The terminal clears.]
+
+============================================================
+CAPTAIN'S WISDOM — SESSION 4
+
+"The TEXT is too dark. I cannot see it."
+  — On the difference between describing darkness and creating it.
+
+"No punk. No rock. No metal. Tonight."
+  — On the value of knowing exactly what you want before the show starts.
+
+"Check it in as stable. Will check in after the live show."
+  — On shipping with confidence.
+
+============================================================
+END OF SCENE 4
