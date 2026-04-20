@@ -1026,10 +1026,51 @@ HTML = r"""<!DOCTYPE html>
 <title>DJ Block Planner</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column}
-#hdr{background:#0d0d1a;padding:10px 18px;border-bottom:2px solid #e63946;display:flex;align-items:center;gap:16px;flex-shrink:0}
-#hdr h1{color:#e63946;font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
-#hdr small{color:#888;font-size:11px}
+/* ── Dark mode (default) ── */
+:root{
+  --bg:        #111;
+  --bg2:       #0d0d1a;
+  --bg3:       #0a0a0a;
+  --bg4:       #1a1a1a;
+  --border:    #1a1a1a;
+  --border2:   #2d2d2d;
+  --text:      #ddd;
+  --text2:     #888;
+  --text3:     #555;
+  --text4:     #444;
+  --accent:    #e63946;
+  --card-bg:   #161616;
+  --card-sel:  #1a1a2e;
+  --card-bdr:  #2a2a4a;
+  --meta:      #666;
+  --lyric:     #4a5568;
+}
+/* ── Light mode (outdoor) ── */
+body.light{
+  --bg:        #f0ede8;
+  --bg2:       #e8e4de;
+  --bg3:       #e2ddd7;
+  --bg4:       #d8d3cc;
+  --border:    #c8c3bc;
+  --border2:   #b8b3ac;
+  --text:      #1a1a1a;
+  --text2:     #444;
+  --text3:     #666;
+  --text4:     #888;
+  --accent:    #c0392b;
+  --card-bg:   #ebe7e1;
+  --card-sel:  #ddd8f0;
+  --card-bdr:  #9b8ec4;
+  --meta:      #555;
+  --lyric:     #6b7280;
+}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
+#hdr{background:var(--bg2);padding:10px 18px;border-bottom:2px solid var(--accent);display:flex;align-items:center;gap:16px;flex-shrink:0}
+#hdr h1{color:var(--accent);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
+#hdr small{color:var(--text2);font-size:11px}
+/* Theme toggle button */
+#theme-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 8px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;letter-spacing:.5px;flex-shrink:0}
+#theme-btn:hover{border-color:var(--text2);color:var(--text)}
 #osc-status{font-size:10px;padding:3px 8px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
 #osc-status.on{background:#14532d;color:#4ade80}
 #osc-status.off{background:#1e293b;color:#555}
@@ -1062,6 +1103,49 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .genre-chk.checked{color:#ccc}
 #show-apply{background:#3b2d6e;color:#c4b5fd;border:1px solid #7c3aed;padding:7px 20px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;font-weight:bold;letter-spacing:1px;width:100%}
 #show-apply:hover{background:#4c1d95}
+/* ── Light mode overrides ── */
+body.light #deck-bar{background:#ddd8d0;border-bottom-color:#b8b3ac}
+body.light #osc-status.off{background:#d0ccc5;color:#777}
+body.light .deck-pill{border-color:#b8b3ac;color:#666}
+body.light .deck-pill.loaded{border-color:#888;color:#444;background:#d8d3cc}
+body.light #deck-msg{color:#666}
+body.light #swap-btn{background:#d8d3cc;color:#444;border-color:#b0ab a4}
+body.light #swap-btn:hover{background:#c8c3bc;color:#222}
+body.light #search-wrap{background:#e8e4de;border-bottom-color:#c8c3bc}
+body.light #q{background:#f5f2ee;color:#222;border-color:#b8b3ac}
+body.light #results{background:#ebe7e1;border-color:#b8b3ac}
+body.light .r{border-bottom-color:#d8d3cc}.body.light .r:hover{background:#ddd8d0}
+body.light .r .ra{color:#555}.body.light .r .rt{color:#111}
+body.light #cols{background:#c8c3bc}
+body.light .col{background:#ede9e3}
+body.light .col-hdr{border-bottom-color:#d8d3cc}
+body.light #c1 .col-hdr{color:#c0392b}
+body.light #c2 .col-hdr{color:#d4650a}
+body.light #c3 .col-hdr{color:#1a7fa0}
+body.light .anchor-box{background:#f5ddd8;border-color:#c0392b}
+body.light .anchor-box .an .aa{color:#c0392b}
+body.light .anchor-box .an .at{color:#111}
+body.light .tk{border-color:#d8d3cc;background:#ede9e3}
+body.light .tk:hover{border-color:#999;background:#e0dbd4}
+body.light .tk.sel{border-color:#d4650a;background:#fff0e0}
+body.light .tk .ta{color:#444}.body.light .tk .tt{color:#111}
+body.light .bpm{color:#b85a00}
+body.light .key{color:#1a6080}
+body.light .gen{color:#555}
+body.light .scr{color:#2a7a3a}
+body.light .lyric-summary{color:#777}
+body.light .meta{color:#555}
+body.light .bg-dest{color:#1a7fa0;border-left-color:#1a7fa0}
+body.light .empty{color:#888}
+body.light #rescue-box{background:#ede9e3;border-color:#c8c3bc}
+body.light #activity-bar{background:#ddd8d0;border-bottom-color:#c8c3bc}
+body.light .act-label{color:#b85a00}
+body.light .act-track{color:#333}
+body.light .act-bar-wrap{background:#c8c3bc}
+body.light #show-modal{background:#ebe7e1;border-color:#c8c3bc}
+body.light .profile-btn{background:#e2ddd7;color:#444;border-color:#c8c3bc}
+body.light .genre-chk{color:#555}
+body.light .genre-chk:hover{background:#d8d3cc;color:#222}
 #rescue-box{background:#111;border:1px solid #333;border-radius:4px;padding:10px 14px;margin:8px 18px;display:none}
 #rescue-box .r-label{font-size:9px;letter-spacing:2px;color:#666;margin-bottom:5px;text-transform:uppercase}
 #rescue-box .r-track{font-size:13px;cursor:pointer}
@@ -1092,7 +1176,7 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
-.lyric-summary{font-size:11px;color:#555;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.lyric-summary{font-size:11px;color:#8a8fa8;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
 .tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
@@ -1135,6 +1219,7 @@ body{background:#111;color:#ddd;font-family:'Courier New',monospace;font-size:13
   <h1>♪ DJ Block Planner</h1>
   <small id="tc">loading…</small>
   <span id="osc-status" class="off">OSC OFF</span>
+  <button id="theme-btn" onclick="toggleTheme()" title="Switch between dark (indoor) and light (outdoor) mode">☀</button>
 </div>
 <div id="deck-bar">
   <span class="deck-pill" id="pill-a">DECK A</span>
@@ -1188,6 +1273,19 @@ let SR=[],S2=[],anchor=null,slot2=null,oscActive=false;
 // Per-deck resolved track objects (or null if empty / not found in collection)
 let deckTracks={a:null,b:null};
 let deckPlaying={a:false,b:false};
+
+// ── Theme toggle (dark ↔ light) ───────────────────────────────────────────────
+(function(){
+  if(localStorage.getItem('theme')==='light'){
+    document.body.classList.add('light');
+    document.getElementById('theme-btn').textContent='🌙';
+  }
+})();
+function toggleTheme(){
+  const light=document.body.classList.toggle('light');
+  document.getElementById('theme-btn').textContent=light?'🌙':'☀';
+  localStorage.setItem('theme',light?'light':'dark');
+}
 
 // ── Show Genre Config ─────────────────────────────────────────────────────────
 const ALL_GENRES=[
