@@ -69,6 +69,7 @@ class Track:
     genre:    str
     stars:    int
     duration: float = 0.0   # seconds, from NML PLAYTIME
+    comment:  str   = ""    # NML INFO COMMENT — lyric summary written by write_nml_comments.py
 
     @property
     def search_text(self) -> str:
@@ -91,7 +92,7 @@ class Track:
             "rep_tier":     rep["tier"]     if rep else None,
             "rep_summary":  rep["summary"]  if rep else None,
             "song_flag":    sflag,
-            "lyric_summary":lyr["summary"]  if lyr else None,
+            "lyric_summary":lyr["summary"]  if lyr else (self.comment or None),
             "lyric_theme":  lyr["theme"]    if lyr else None,
             "lyric_flags":  lyr["flags"]    if lyr else [],
         }
@@ -165,12 +166,19 @@ def lyrics_for(path: str) -> dict | None:
     return entry
 
 
+# ── Song key (used for dedup everywhere) ─────────────────────────────────────
+
+def _song_key(t: Track) -> str:
+    """Dedup key — same artist+title = same song regardless of file/version."""
+    return f"{t.artist.lower().strip()}\t{t.title.lower().strip()}"
+
+
 # ── NML loader ────────────────────────────────────────────────────────────────
 
 def load_tracks(nml_path: Path) -> list[Track]:
     tree = ET.parse(nml_path)
     coll = tree.getroot().find("COLLECTION")
-    tracks = []
+    raw: list[tuple[int, Track]] = []   # (bitrate, track) — for dedup
     for e in coll.findall("ENTRY"):
         artist = e.get("ARTIST", "").strip()
         title  = e.get("TITLE",  "").strip()
@@ -185,6 +193,10 @@ def load_tracks(nml_path: Path) -> list[Track]:
             bpm = float(tempo.get("BPM", 0)) if tempo is not None else 0.0
         except ValueError:
             bpm = 0.0
+        try:
+            bitrate = int(info.get("BITRATE", 0) or 0)
+        except (ValueError, TypeError):
+            bitrate = 0
         ranking = int(info.get("RANKING", 0))
         path = traktor_to_abs(
             loc.get("VOLUME", ""), loc.get("DIR", ""), loc.get("FILE", "")
@@ -193,7 +205,7 @@ def load_tracks(nml_path: Path) -> list[Track]:
             duration = float(info.get("PLAYTIME", 0) or 0)
         except (ValueError, TypeError):
             duration = 0.0
-        tracks.append(Track(
+        raw.append((bitrate, Track(
             path     = path,
             artist   = artist,
             title    = title,
@@ -202,8 +214,19 @@ def load_tracks(nml_path: Path) -> list[Track]:
             genre    = info.get("GENRE", ""),
             stars    = RANKING_TO_STARS.get(ranking, 0),
             duration = duration,
-        ))
-    return tracks
+            comment  = info.get("COMMENT", "") or "",
+        )))
+
+    # Deduplicate by artist+title: keep highest-bitrate version.
+    # _2.mp3/_3.mp3 etc. are rename-collision duplicates from Stage 2 copy.
+    best: dict[str, tuple[int, Track]] = {}
+    for bitrate, t in raw:
+        key = _song_key(t)
+        existing = best.get(key)
+        if existing is None or bitrate > existing[0]:
+            best[key] = (bitrate, t)
+
+    return [t for _, t in best.values()]
 
 
 # ── Compatibility scoring ─────────────────────────────────────────────────────
@@ -361,11 +384,6 @@ def _theme(path: str) -> str | None:
 
 
 # ── Block suggestions ─────────────────────────────────────────────────────────
-
-def _song_key(t: Track) -> str:
-    """Dedup key — same artist+title = same song regardless of file/version."""
-    return f"{t.artist.lower().strip()}\t{t.title.lower().strip()}"
-
 
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
     anchor_theme    = _theme(anchor.path)
@@ -1318,7 +1336,10 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
-.lyric-summary{font-size:11px;color:#8a8fa8;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.lyric-summary{font-size:11px;color:#8a8fa8;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;cursor:default;position:relative}
+.lyric-summary .lyr-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:0;z-index:999;background:#1e2235;color:#c8cce8;font-size:12px;font-style:normal;line-height:1.5;padding:8px 12px;border-radius:6px;border:1px solid #3a3f5c;min-width:260px;max-width:400px;white-space:normal;box-shadow:0 4px 16px rgba(0,0,0,.6);pointer-events:none}
+.lyric-summary:hover .lyr-tip{display:block}
+body.light .lyric-summary .lyr-tip{background:#fff;color:#333;border-color:#bbb;box-shadow:0 4px 16px rgba(0,0,0,.2)}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
 .tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
@@ -1673,7 +1694,7 @@ function lyricBadges(t){
 }
 function lyricLine(t){
   if(!t.lyric_summary)return'';
-  return`<div class="lyric-summary" title="${esc(t.lyric_summary)}">${esc(t.lyric_summary)}</div>`;
+  return`<div class="lyric-summary">${esc(t.lyric_summary)}<span class="lyr-tip">♪ ${esc(t.lyric_summary)}</span></div>`;
 }
 function meta(t,showScore){
   return`<div class="meta">
