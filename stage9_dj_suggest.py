@@ -1160,6 +1160,9 @@ HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DJ Block Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 /* ── Dark mode (default) ── */
@@ -1200,7 +1203,7 @@ body.light{
   --meta:      #555;
   --lyric:     #6b7280;
 }
-body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
+body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible','Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
 #hdr{background:var(--bg2);padding:10px 18px;border-bottom:2px solid var(--accent);display:flex;align-items:center;gap:16px;flex-shrink:0}
 #hdr h1{color:var(--accent);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
 #hdr small{color:var(--text2);font-size:11px}
@@ -1336,10 +1339,11 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
-.lyric-summary{font-size:11px;color:#8a8fa8;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;cursor:default;position:relative}
-.lyric-summary .lyr-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:0;z-index:999;background:#1e2235;color:#c8cce8;font-size:12px;font-style:normal;line-height:1.5;padding:8px 12px;border-radius:6px;border:1px solid #3a3f5c;min-width:260px;max-width:400px;white-space:normal;box-shadow:0 4px 16px rgba(0,0,0,.6);pointer-events:none}
-.lyric-summary:hover .lyr-tip{display:block}
-body.light .lyric-summary .lyr-tip{background:#fff;color:#333;border-color:#bbb;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.lyric-summary{font-size:11px;color:#a8adc8;margin-top:3px;white-space:normal;overflow-wrap:break-word;cursor:default}
+body.light .lyric-summary{color:#666}
+#lyr-tooltip{display:none;position:fixed;z-index:9999;pointer-events:none}
+#lyr-tooltip .tk{zoom:2;min-width:220px;max-width:260px;cursor:default!important;border-color:#444!important;background:#181818!important;margin-bottom:0!important}
+body.light #lyr-tooltip .tk{background:#e8e3dd!important;border-color:#aaa!important}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
 .tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
@@ -1370,7 +1374,7 @@ body.light .lyric-summary .lyr-tip{background:#fff;color:#333;border-color:#bbb;
 #activity-bar{background:#0a0a0a;border-bottom:1px solid #1a1a1a;padding:5px 18px;display:none;align-items:center;gap:12px;flex-shrink:0;font-size:11px}
 #activity-bar.active{display:flex}
 #activity-bar .act-label{color:#4cc9f0;letter-spacing:1px;text-transform:uppercase;font-size:10px;white-space:nowrap;min-width:80px}
-#activity-bar .act-track{flex:1;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
+#activity-bar .act-track{flex:1;color:#888;white-space:normal;overflow-wrap:break-word;font-style:italic;font-size:10px}
 #activity-bar .act-bar-wrap{width:160px;background:#1a1a1a;border-radius:2px;height:4px;overflow:hidden;flex-shrink:0}
 #activity-bar .act-fill{background:#4cc9f0;height:100%;border-radius:2px;transition:width .4s}
 #activity-bar .act-info{color:#555;white-space:nowrap;font-size:10px}
@@ -1378,6 +1382,7 @@ body.light .lyric-summary .lyr-tip{background:#fff;color:#333;border-color:#bbb;
 </head>
 <body>
 <div id="toast"></div>
+<div id="lyr-tooltip"></div>
 <div id="hdr">
   <h1>♪ DJ Block Planner</h1>
   <small id="tc">loading…</small>
@@ -1694,7 +1699,13 @@ function lyricBadges(t){
 }
 function lyricLine(t){
   if(!t.lyric_summary)return'';
-  return`<div class="lyric-summary">${esc(t.lyric_summary)}<span class="lyr-tip">♪ ${esc(t.lyric_summary)}</span></div>`;
+  return`<div class="lyric-summary">♪ ${esc(t.lyric_summary)}</div>`;
+}
+function tipCardHtml(t){
+  const lyrHtml=t.lyric_summary
+    ?`<div class="lyric-summary" style="white-space:normal;overflow-wrap:break-word">♪ ${esc(t.lyric_summary)}</div>`
+    :'';
+  return`<div class="tk"><div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>${lyrHtml}${meta(t,true)}</div>`;
 }
 function meta(t,showScore){
   return`<div class="meta">
@@ -1703,11 +1714,39 @@ function meta(t,showScore){
     ${showScore?`<span class="scr">${t.score}%</span>`:''}${txBadge(t)}</div>`;
 }
 function tkHtml(t,idx,sel,showScore){
-  return`<div class="tk${sel?' sel':''}" id="s2-${idx}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+  return`<div class="tk${sel?' sel':''}" id="s2-${idx}" data-track="${esc(JSON.stringify(t))}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
     <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
     ${lyricLine(t)}${meta(t,showScore)}</div>`;
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// ── Card tooltip — 2× enlarged version of any .tk card ───────────────────
+const _tip=document.getElementById('lyr-tooltip');
+let _tipTimer=null;
+document.addEventListener('mouseover',e=>{
+  const el=e.target.closest('.tk[data-track]');
+  if(!el){clearTimeout(_tipTimer);_tipTimer=setTimeout(()=>{_tip.style.display='none';},80);return;}
+  clearTimeout(_tipTimer);
+  let t;try{t=JSON.parse(el.dataset.track);}catch(ex){return;}
+  _tip.innerHTML=tipCardHtml(t);
+  _tip.style.display='block';
+  _positionTip(e);
+});
+document.addEventListener('mousemove',e=>{
+  if(e.target.closest('.tk[data-track]')) _positionTip(e);
+});
+document.addEventListener('mouseout',e=>{
+  if(e.target.closest('.tk[data-track]')) return;
+  _tipTimer=setTimeout(()=>{ _tip.style.display='none'; },100);
+});
+function _positionTip(e){
+  const pad=16, tw=_tip.offsetWidth, th=_tip.offsetHeight;
+  let x=e.clientX+pad, y=e.clientY-th-pad;
+  if(x+tw>window.innerWidth-pad) x=e.clientX-tw-pad;
+  if(y<pad) y=e.clientY+pad+30;
+  _tip.style.left=x+'px';
+  _tip.style.top=y+'px';
+}
 
 let _toastTimer;
 function copyTrack(artist,title){
@@ -1933,7 +1972,7 @@ function renderSlot3(groups){
   if(!groups.length){b3.innerHTML='<div class="empty">No bridge candidates</div>';return}
   b3.innerHTML=groups.map(g=>`
     <div class="bg"><div class="bg-dest">→ ${esc(g.destination)}</div>
-    ${g.tracks.map(t=>`<div class="tk" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+    ${g.tracks.map(t=>`<div class="tk" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
       <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
       ${lyricLine(t)}${meta(t,true)}</div>`).join('')}</div>`).join('');
 }
