@@ -3,6 +3,7 @@ state/*
 # Allow specific state files needed for PC lyrics pipeline
 !state/tracklist.json
 !state/lyrics_dedup.json
+!state/lyrics_summary.json
 corrected_music/
 corrected_traktor/
 review.json

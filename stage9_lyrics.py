@@ -52,7 +52,7 @@ LYRICS_INDEX  = STATE_DIR / "lyrics_index.json"     # {path: {summary, flags, er
 LYRICS_DEDUP  = STATE_DIR / "lyrics_dedup.json"     # {"artist\ttitle_base": {summary, flags}}
 ACTIVITY_FILE = STATE_DIR / "activity.json"         # live progress for server UI
 
-SUMMARIZE_WORKERS = 3   # concurrent Ollama requests — safe for llama3.1:8b
+SUMMARIZE_WORKERS = 6   # concurrent Ollama requests
 TRAKTOR_NML   = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/collection.nml"
 
 # ── Flag definitions ──────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ SYSTEM_PROMPT = """You are a lyrics analyst for a goth/industrial DJ tool.
 Your job: read song lyrics and return a JSON object with exactly two fields.
 
 Rules:
-- "summary": ONE sentence describing what the song is about lyrically (its theme or meaning, not a track listing of events). Be specific and concrete. Max 20 words.
+- "summary": ONE sentence in English describing what the song is about lyrically (its theme or meaning, not a track listing of events). Always write the summary in English even if the lyrics are in another language. Be specific and concrete. Max 20 words.
 - "flags": a list containing zero or more of these exact strings, only if clearly present in the lyrics:
     "racism"          → racial slurs or white supremacist ideology
     "bigotry"         → homophobia, transphobia, explicit group hatred
@@ -98,7 +98,11 @@ Respond with JSON only: {{"summary": "...", "flags": []}}"""
 
 # ── NML loader ────────────────────────────────────────────────────────────────
 
-_VERSION_SUFFIX = re.compile(r'\s*[\(\[].{0,40}[\)\]]\s*$')
+_VERSION_SUFFIX  = re.compile(r'\s*[\(\[].{0,40}[\)\]]\s*$')
+_INSTRUMENTAL    = re.compile(r'\b(instrumental|inst\.?|no[ -]?vocals?)\b', re.I)
+
+def is_instrumental(title: str) -> bool:
+    return bool(_INSTRUMENTAL.search(title))
 
 def base_title(title: str) -> str:
     """Strip version suffixes: '(Radio Edit)', '[Remaster]', etc."""
@@ -108,6 +112,26 @@ def dedup_key(artist: str, title: str) -> str:
     return f"{artist.lower().strip()}\t{base_title(title)}"
 
 def load_all_tracks(nml_path: Path) -> list[dict]:
+    # Fall back to tracklist.json when the NML isn't available (e.g. worktrees)
+    tracklist = BASE / "state" / "tracklist.json"
+    if not nml_path.exists() and tracklist.exists():
+        print(f"  NML not found — loading from {tracklist.name}")
+        entries = json.loads(tracklist.read_text(encoding="utf-8"))
+        results = []
+        for e in entries:
+            artist = e.get("artist", "").strip()
+            title  = e.get("title",  "").strip()
+            if not artist and not title:
+                continue
+            dkey = e.get("dkey") or dedup_key(artist, title)
+            results.append({
+                "path":   dkey,   # dkey doubles as the cache key when no file path
+                "artist": artist,
+                "title":  title,
+                "dkey":   dkey,
+            })
+        return results
+
     tree = ET.parse(nml_path)
     coll = tree.getroot().find("COLLECTION")
     results = []
@@ -154,7 +178,7 @@ def fetch_lyrics(artist: str, title: str) -> str | None:
 # ── Claude Haiku summarizer ───────────────────────────────────────────────────
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:8b"   # fast, good general reasoning; swap to gemma3:27b for higher quality
+OLLAMA_MODEL = "qwen2.5:14b"
 
 def summarize_lyrics(artist: str, title: str, lyrics: str) -> dict:
     """
@@ -211,46 +235,59 @@ def run_fetch(tracks: list[dict], limit: int = 0) -> None:
     raw: dict = {}
     if LYRICS_RAW.exists():
         try:
-            raw = json.loads(LYRICS_RAW.read_text())
+            raw = json.loads(LYRICS_RAW.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             raw = {}
+
+    # Mark known instrumentals immediately — no fetch needed
+    for t in tracks:
+        if t["path"] not in raw and is_instrumental(t["title"]):
+            raw[t["path"]] = None
 
     todo = [t for t in tracks if t["path"] not in raw]
     if limit:
         todo = todo[:limit]
 
+    skipped_instr = sum(1 for t in tracks if is_instrumental(t["title"]))
     print(f"Lyrics fetch — lyrics.ovh")
     print(f"  Total tracks:    {len(tracks):,}")
-    print(f"  Already cached:  {len(tracks) - len(todo):,}")
+    print(f"  Skipped (instr): {skipped_instr:,}")
+    print(f"  Already cached:  {len(tracks) - len(todo) - skipped_instr:,}")
     print(f"  To fetch:        {len(todo):,}")
     if not todo:
         print("  Nothing to do.")
         return
 
-    found = not_found = 0
+    FETCH_WORKERS = 16
+    found = not_found = done_count = 0
     start = time.time()
+    lock  = threading.Lock()
 
-    for i, track in enumerate(todo, 1):
+    def fetch_one(track):
+        nonlocal found, not_found, done_count
         lyrics = fetch_lyrics(track["artist"], track["title"])
-        raw[track["path"]] = lyrics
-        if lyrics:
-            found += 1
-        else:
-            not_found += 1
+        with lock:
+            raw[track["path"]] = lyrics
+            if lyrics:
+                found += 1
+            else:
+                not_found += 1
+            done_count += 1
+            if done_count % 100 == 0 or done_count == len(todo):
+                LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+                elapsed = time.time() - start
+                rate    = done_count / max(elapsed, 0.1)
+                remain  = (len(todo) - done_count) / rate / 60 if rate else 0
+                pct     = found / done_count * 100
+                write_activity("Lyrics indexer", "fetch", done_count, len(todo), start, rate)
+                print(f"  {done_count:,}/{len(todo):,} — found {found:,} ({pct:.0f}%), "
+                      f"not found {not_found:,} — ~{remain:.0f} min left")
 
-        if i % 100 == 0 or i == len(todo):
-            LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False))
-            elapsed = time.time() - start
-            rate    = i / max(elapsed, 0.1)
-            remain  = (len(todo) - i) / rate / 60 if rate else 0
-            pct     = found / i * 100
-            write_activity("Lyrics indexer", "fetch", i, len(todo), start, rate)
-            print(f"  {i:,}/{len(todo):,} — found {found:,} ({pct:.0f}%), "
-                  f"not found {not_found:,} — ~{remain:.0f} min left")
+    print(f"  Workers:         {FETCH_WORKERS}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=FETCH_WORKERS) as ex:
+        list(ex.map(fetch_one, todo))
 
-        time.sleep(0.35)  # ~2.8 req/sec, polite
-
-    LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False))
+    LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
     elapsed = time.time() - start
     print(f"\nFetch complete in {elapsed/60:.1f} min")
     print(f"  With lyrics: {found:,}  ({found/len(todo)*100:.0f}%)")
@@ -272,12 +309,12 @@ def run_summarize(tracks: list[dict], limit: int = 0) -> None:
         print(f"  Start it with:  ollama serve")
         sys.exit(1)
 
-    raw: dict = json.loads(LYRICS_RAW.read_text())
+    raw: dict = json.loads(LYRICS_RAW.read_text(encoding="utf-8"))
 
     index: dict = {}
     if LYRICS_INDEX.exists():
         try:
-            index = json.loads(LYRICS_INDEX.read_text())
+            index = json.loads(LYRICS_INDEX.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             index = {}
 
@@ -286,7 +323,7 @@ def run_summarize(tracks: list[dict], limit: int = 0) -> None:
     dedup: dict = {}
     if LYRICS_DEDUP.exists():
         try:
-            dedup = json.loads(LYRICS_DEDUP.read_text())
+            dedup = json.loads(LYRICS_DEDUP.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             dedup = {}
 
@@ -336,17 +373,19 @@ def run_summarize(tracks: list[dict], limit: int = 0) -> None:
             if "error" in result:
                 index[track["path"]] = {"summary": None, "flags": [], "error": result["error"]}
                 errors += 1
+                print(f">> {track['artist']} — {track['title']} | [error: {result['error'][:60]}]")
             else:
                 entry = {"summary": result["summary"], "flags": result["flags"]}
                 index[track["path"]] = entry
                 dedup[dkey] = entry
+                flag_str = f" [FLAG:{result['flags']}]" if result["flags"] else ""
+                print(f">> {track['artist']} — {track['title']} | {result['summary']}{flag_str}")
                 if result["flags"]:
                     flagged += 1
-                    print(f"  ⚑ FLAGGED: {track['artist']} — {track['title']}: {result['flags']}")
             done_count = llm_calls + dedup_hits
             if llm_calls % 50 == 0 or llm_calls == len(llm_todo):
-                LYRICS_INDEX.write_text(json.dumps(index, ensure_ascii=False))
-                LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
+                LYRICS_INDEX.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+                LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False), encoding="utf-8")
                 elapsed = time.time() - start
                 rate    = llm_calls / max(elapsed, 1)
                 remain  = (len(llm_todo) - llm_calls) / max(rate, 0.01) / 60
@@ -359,8 +398,8 @@ def run_summarize(tracks: list[dict], limit: int = 0) -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=SUMMARIZE_WORKERS) as ex:
         list(ex.map(process_one, llm_todo))
 
-    LYRICS_INDEX.write_text(json.dumps(index, ensure_ascii=False))
-    LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False))
+    LYRICS_INDEX.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    LYRICS_DEDUP.write_text(json.dumps(dedup, ensure_ascii=False), encoding="utf-8")
     elapsed = time.time() - start
     print(f"\nSummarize complete in {elapsed/60:.1f} min")
     print(f"  LLM calls made: {llm_calls:,}")
@@ -371,8 +410,8 @@ def run_summarize(tracks: list[dict], limit: int = 0) -> None:
 # ── Report ────────────────────────────────────────────────────────────────────
 
 def run_report(tracks: list[dict]) -> None:
-    raw   = json.loads(LYRICS_RAW.read_text())   if LYRICS_RAW.exists()   else {}
-    index = json.loads(LYRICS_INDEX.read_text()) if LYRICS_INDEX.exists() else {}
+    raw   = json.loads(LYRICS_RAW.read_text(encoding="utf-8"))   if LYRICS_RAW.exists()   else {}
+    index = json.loads(LYRICS_INDEX.read_text(encoding="utf-8")) if LYRICS_INDEX.exists() else {}
 
     with_lyrics  = sum(1 for v in raw.values() if v)
     no_lyrics    = sum(1 for v in raw.values() if v is None)
@@ -397,6 +436,47 @@ def run_report(tracks: list[dict]) -> None:
         for flag, count in sorted(flag_counts.items(), key=lambda x: -x[1]):
             print(f"    {flag}: {count}")
 
+# ── Summary list ─────────────────────────────────────────────────────────────
+
+def run_list(tracks: list[dict], out_path: str = "") -> None:
+    """Print (and optionally save) the deduplicated summary list."""
+    dedup: dict = {}
+    if LYRICS_DEDUP.exists():
+        try:
+            dedup = json.loads(LYRICS_DEDUP.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            dedup = {}
+
+    # Build a readable list: one row per unique dkey
+    seen: dict[str, dict] = {}       # dkey → {artist, title, summary, flags}
+    for track in tracks:
+        dkey = track["dkey"]
+        if dkey in seen:
+            continue
+        entry = dedup.get(dkey)
+        if not entry or not entry.get("summary"):
+            continue
+        seen[dkey] = {
+            "artist":  track["artist"],
+            "title":   track["title"],
+            "summary": entry["summary"],
+            "flags":   entry.get("flags", []),
+        }
+
+    rows = sorted(seen.values(), key=lambda r: (r["artist"].lower(), r["title"].lower()))
+
+    if out_path:
+        Path(out_path).write_text(
+            json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"Saved {len(rows):,} summaries → {out_path}")
+    else:
+        for r in rows:
+            flag_str = f"  [{', '.join(r['flags'])}]" if r["flags"] else ""
+            print(f"{r['artist']} — {r['title']}")
+            print(f"  {r['summary']}{flag_str}")
+        print(f"\n{len(rows):,} songs summarized")
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def write_activity(task: str, phase: str, done: int, total: int,
@@ -415,7 +495,7 @@ def write_activity(task: str, phase: str, done: int, total: int,
         "eta_min":    eta_min,
         "started_at": started_at,
         "updated_at": time.time(),
-    }, ensure_ascii=False))
+    }, ensure_ascii=False), encoding="utf-8")
 
 def clear_activity() -> None:
     """Remove the activity file when the task completes."""
@@ -457,7 +537,7 @@ def watch_for_new_tracks(interval_sec: int = 60) -> None:
             tracks = load_all_tracks(TRAKTOR_NML)
 
             # Only process tracks not yet in fetch cache
-            raw = json.loads(LYRICS_RAW.read_text()) if LYRICS_RAW.exists() else {}
+            raw = json.loads(LYRICS_RAW.read_text(encoding="utf-8")) if LYRICS_RAW.exists() else {}
             new = [t for t in tracks if t["path"] not in raw]
             if not new:
                 print(f"  No new tracks to process.")
@@ -472,36 +552,42 @@ def watch_for_new_tracks(interval_sec: int = 60) -> None:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(
         description="Stage 9 — Lyrics indexer",
         epilog="New tracks workflow: run --run once for the full library, then --watch to pick up additions automatically."
     )
     parser.add_argument("--fetch",     action="store_true", help="Fetch lyrics from lyrics.ovh")
-    parser.add_argument("--summarize", action="store_true", help="Summarize fetched lyrics with Claude Haiku")
+    parser.add_argument("--summarize", action="store_true", help="Summarize fetched lyrics with Ollama")
     parser.add_argument("--run",       action="store_true", help="Fetch + summarize (full pipeline)")
     parser.add_argument("--report",    action="store_true", help="Show coverage statistics")
+    parser.add_argument("--list",      action="store_true", help="Print deduplicated summary list")
+    parser.add_argument("--list-out",  default="",          help="Save summary list to this JSON file")
     parser.add_argument("--watch",     action="store_true", help="Watch NML for new tracks, process automatically")
     parser.add_argument("--limit",     type=int, default=0, help="Process at most N tracks (for testing)")
     args = parser.parse_args()
 
-    if not any([args.fetch, args.summarize, args.run, args.report, args.watch]):
+    if not any([args.fetch, args.summarize, args.run, args.report, args.watch, args.list, args.list_out]):
         parser.print_help()
         sys.exit(0)
 
-    if not TRAKTOR_NML.exists():
-        print(f"ERROR: NML not found at {TRAKTOR_NML}")
-        sys.exit(1)
-
     if args.watch:
+        if not TRAKTOR_NML.exists():
+            print(f"ERROR: --watch requires NML at {TRAKTOR_NML}")
+            sys.exit(1)
         watch_for_new_tracks()
         return
 
-    print(f"Loading tracks from NML…")
+    print(f"Loading tracks…")
     tracks = load_all_tracks(TRAKTOR_NML)
     print(f"  {len(tracks):,} tracks\n")
 
     if args.report:
         run_report(tracks)
+        return
+
+    if args.list or args.list_out:
+        run_list(tracks, out_path=args.list_out)
         return
 
     if args.fetch or args.run:
@@ -513,6 +599,10 @@ def main() -> None:
         print()
         clear_activity()
         notify_server_reload()
+
+    if args.run and not args.limit:
+        out = str(STATE_DIR / "lyrics_summary.json")
+        run_list(tracks, out_path=out)
 
 if __name__ == "__main__":
     main()
