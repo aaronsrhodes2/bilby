@@ -267,6 +267,191 @@ def run_fetch_lrclib(tracks: list[dict], limit: int = 0) -> None:
     print(f"  Still missing:   {not_found:,}")
 
 
+# ── Genius ───────────────────────────────────────────────────────────────────
+
+GENIUS_SEARCH_URL = "https://genius.com/api/search/song"
+_GENIUS_UA        = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+_HTML_BR     = re.compile(r'<br\s*/?>', re.I)
+_HTML_TAG    = re.compile(r'<[^>]+>')
+_HTML_ENT    = re.compile(r'&(?:#x([0-9a-fA-F]+)|#([0-9]+)|([a-zA-Z]+));')
+_HTML_ENTMAP = {
+    "amp": "&", "lt": "<", "gt": ">", "quot": '"',
+    "apos": "'", "nbsp": " ", "ndash": "–", "mdash": "—",
+    "rsquo": "'", "lsquo": "'", "rdquo": '"', "ldquo": '"',
+}
+
+
+def _decode_html(s: str) -> str:
+    def _sub(m: re.Match) -> str:
+        if m.group(1): return chr(int(m.group(1), 16))
+        if m.group(2): return chr(int(m.group(2)))
+        return _HTML_ENTMAP.get(m.group(3), "")
+    return _HTML_ENT.sub(_sub, s)
+
+
+def _strip_html(fragment: str) -> str:
+    fragment = _HTML_BR.sub("\n", fragment)
+    fragment = _HTML_TAG.sub("", fragment)
+    return _decode_html(fragment).strip()
+
+
+def _extract_lyrics_container(html: str) -> str:
+    """
+    Find every div[data-lyrics-container="true"] and extract full text,
+    handling arbitrarily nested inner divs via a depth counter.
+    """
+    marker = 'data-lyrics-container="true"'
+    parts  = []
+    search_from = 0
+    while True:
+        start = html.find(marker, search_from)
+        if start == -1:
+            break
+        # advance past the closing '>' of the opening tag
+        tag_end = html.find('>', start)
+        if tag_end == -1:
+            break
+        tag_end += 1
+
+        # walk forward counting <div … > and </div>
+        depth = 1
+        i = tag_end
+        while i < len(html) and depth > 0:
+            o = html.find('<div', i)
+            c = html.find('</div>', i)
+            if c == -1:
+                i = len(html)
+                break
+            if o != -1 and o < c:
+                depth += 1
+                i = o + 4
+            else:
+                depth -= 1
+                if depth == 0:
+                    content = _strip_html(html[tag_end:c])
+                    if content:
+                        parts.append(content)
+                    i = c + 6
+                    break
+                i = c + 6
+
+        search_from = i
+
+    return "\n\n".join(parts)
+
+
+def fetch_lyrics_genius(artist: str, title: str) -> str | None:
+    """
+    Search Genius → fetch lyrics page → extract plaintext.
+    Returns lyrics text or None on failure / not found.
+    """
+    q   = f"{artist} {title}"
+    url = f"{GENIUS_SEARCH_URL}?q={quote(q)}&per_page=5"
+    req = Request(url, headers={"User-Agent": _GENIUS_UA})
+    try:
+        with urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        sections = data.get("response", {}).get("sections", [])
+        hits     = sections[0].get("hits", []) if sections else []
+    except Exception:
+        return None
+
+    # pick the hit whose primary artist is closest to ours
+    artist_lc = artist.lower()
+    best_url  = None
+    for hit in hits:
+        result     = hit.get("result", {})
+        hit_artist = (result.get("primary_artist", {}).get("name") or "").lower()
+        if artist_lc in hit_artist or hit_artist in artist_lc:
+            best_url = result.get("url")
+            break
+    if not best_url and hits:
+        best_url = hits[0]["result"].get("url")
+    if not best_url:
+        return None
+
+    # fetch lyrics page
+    try:
+        req2 = Request(best_url, headers={"User-Agent": _GENIUS_UA})
+        with urlopen(req2, timeout=12) as r:
+            html = r.read().decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+    text = _extract_lyrics_container(html)
+    if not text:
+        return None
+
+    # Strip Genius page preamble: "{N} Contributors{Title} Lyrics{description}"
+    # The description ends with "Read More" before the actual lyrics begin.
+    text = re.sub(r'^\s*\d+\s+Contributors.*?Lyrics', '', text, count=1,
+                  flags=re.DOTALL | re.I)
+    if 'Read More' in text:
+        text = text[text.index('Read More') + len('Read More'):]
+    text = text.lstrip('\xa0 \n')
+
+    return text if text.strip() else None
+
+
+def run_fetch_genius(tracks: list[dict], limit: int = 0) -> None:
+    """Fetch from Genius for tracks still missing lyrics."""
+    if not LYRICS_RAW.exists():
+        print("No lyrics_raw.json — run --fetch first.")
+        return
+
+    raw: dict = json.loads(LYRICS_RAW.read_text(encoding="utf-8"))
+
+    todo = [t for t in tracks
+            if raw.get(t["path"]) is None
+            and not is_instrumental(t["title"])]
+    if limit:
+        todo = todo[:limit]
+
+    print(f"Genius fetch — genius.com")
+    print(f"  Gaps to fill:    {len(todo):,}")
+    if not todo:
+        print("  Nothing to do.")
+        return
+
+    FETCH_WORKERS = 8   # gentler with Genius to avoid rate-limiting
+    found = not_found = done_count = 0
+    start = time.time()
+    lock  = threading.Lock()
+
+    def fetch_one(track):
+        nonlocal found, not_found, done_count
+        lyrics = fetch_lyrics_genius(track["artist"], track["title"])
+        with lock:
+            if lyrics:
+                raw[track["path"]] = lyrics
+                found += 1
+            else:
+                not_found += 1
+            done_count += 1
+            if done_count % 100 == 0 or done_count == len(todo):
+                LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+                elapsed = time.time() - start
+                rate    = done_count / max(elapsed, 0.1)
+                remain  = (len(todo) - done_count) / rate / 60 if rate else 0
+                write_activity("Lyrics indexer", "genius", done_count, len(todo), start, rate)
+                print(f"  {done_count:,}/{len(todo):,} — filled {found:,}, "
+                      f"still missing {not_found:,} — ~{remain:.0f} min left")
+
+    print(f"  Workers:         {FETCH_WORKERS}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=FETCH_WORKERS) as ex:
+        list(ex.map(fetch_one, todo))
+
+    LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    elapsed = time.time() - start
+    print(f"\nGenius fetch complete in {elapsed/60:.1f} min")
+    print(f"  Newly filled:    {found:,}")
+    print(f"  Still missing:   {not_found:,}")
+
+
 # ── Claude Haiku summarizer ───────────────────────────────────────────────────
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
@@ -651,6 +836,7 @@ def main() -> None:
     )
     parser.add_argument("--fetch",        action="store_true", help="Fetch lyrics from lyrics.ovh")
     parser.add_argument("--fetch-lrclib", action="store_true", help="Fill gaps from lrclib.net")
+    parser.add_argument("--fetch-genius", action="store_true", help="Fill gaps from genius.com")
     parser.add_argument("--summarize",    action="store_true", help="Summarize fetched lyrics with Ollama")
     parser.add_argument("--run",          action="store_true", help="Fetch + summarize (full pipeline)")
     parser.add_argument("--report",    action="store_true", help="Show coverage statistics")
@@ -660,7 +846,7 @@ def main() -> None:
     parser.add_argument("--limit",     type=int, default=0, help="Process at most N tracks (for testing)")
     args = parser.parse_args()
 
-    if not any([args.fetch, args.fetch_lrclib, args.summarize, args.run, args.report, args.watch, args.list, args.list_out]):
+    if not any([args.fetch, args.fetch_lrclib, args.fetch_genius, args.summarize, args.run, args.report, args.watch, args.list, args.list_out]):
         parser.print_help()
         sys.exit(0)
 
@@ -689,6 +875,10 @@ def main() -> None:
 
     if args.fetch_lrclib:
         run_fetch_lrclib(tracks, limit=args.limit)
+        print()
+
+    if args.fetch_genius:
+        run_fetch_genius(tracks, limit=args.limit)
         print()
 
     if args.summarize or args.run:
