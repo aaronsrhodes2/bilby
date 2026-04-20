@@ -1,0 +1,192 @@
+OPERATIC PLAY — SCENE 5: THE CUE IS SET
+============================================================
+
+DRAMATIS PERSONAE:
+  CAPTAIN AARON RHODES  — DJ, curator, time-based thinker
+  SKIPPY THE MAGNIFICENT — AI assistant, cue-point architect
+  OINGO BOINGO          — Showing up everywhere; finally contained
+  THE PC                — Silent workhorse, awaiting its overnight task
+  THE FLOOR             — Tonight's destination
+
+============================================================
+ACT I — THE BOINGO PROBLEM
+
+[The Captain loads a track. Suggestions appear. Something is wrong.]
+
+CAPTAIN:
+♩ Why is Oingo Boingo
+  in their own suggestion block?
+  Four times. Four.
+  They are the anchor. They are also the lock. ♩
+
+SKIPPY:
+♩ I see it. The artist check was missing.
+  Every song from one band
+  competing with itself — absurd.
+  Allow me. ♩
+
+[suggest_slot2: anchor artist skipped. Per-artist dedup applied.
+ suggest_slot3: anchor and slot2 artists excluded from bridge groups.
+ Oingo Boingo returns to exactly one slot — the anchor — and no further.]
+
+OINGO BOINGO:
+♩ We are contained. It is appropriate.
+  We did not need four suggestions.
+  One anchor is enough. ♩
+
+============================================================
+ACT II — THE LSOF PROBLEM
+
+[Skippy begins to wire up "played" tracking via lsof events.]
+
+CAPTAIN:
+♩ Wait. We can't rely on that.
+  I load tracks and swap them constantly.
+  The lsof fires every time.
+  Half those tracks never played a bar. ♩
+
+SKIPPY:
+♩ You're right. The clock is the answer.
+  If a track stays in the deck
+  longer than the other deck's song
+  plus two minutes — it played.
+  If not — it was just a candidate. ♩
+
+CAPTAIN:
+♩ That's exactly right. ♩
+
+[_check_played() is born.
+ load_times{} records when each file first appeared.
+ deck_track{} holds the current Track per deck.
+ When a file leaves: time_open vs other_deck.duration + 120s.
+ Solo fallback: 90 seconds.
+ False positives: greatly reduced.]
+
+============================================================
+ACT III — THE SETLIST
+
+CAPTAIN:
+♩ And if we're tracking what played,
+  can we output it at the end?
+  Traktor's History is a chore to prune.
+  I want just: Artist — Song. Done. ♩
+
+SKIPPY:
+♩ Then _SETLIST shall remember.
+  Every confirmed track, timestamped.
+  GET /api/setlist returns the list.
+  GET /api/export-setlist returns the post.
+
+  🎵 DJ Set — April 19, 2026
+  ────────────────────────────
+  01. Sisters of Mercy — Lucretia  [23:14]
+  02. :wumpscut: — Soylent Green   [23:22]
+  ────────────────────────────
+  #goth #darkwave #industrial
+
+  And /setlist — a separate page.
+  Open it on a second screen.
+  Other DJs can see what's been played.
+  No repeats. No awkward moments. ♩
+
+[The 📋 Setlist button appears in the bar.
+ ↺ Reset Show clears history with a confirm dialog.
+ localhost:7334/setlist auto-refreshes every 15 seconds.]
+
+============================================================
+ACT IV — THE CUE POINTS
+
+CAPTAIN:
+♩ Future task: auto cue points.
+  Cue 2 where the first beat hits.
+  Cue 3 when the first vocals arrive.
+  Cue 4 at the hardest beat — make it a loop.
+  Cue 8 at sixteen beats from the end. ♩
+
+SKIPPY:
+♩ Logged. Noted. Documented.
+  The NML holds CUE_V2 elements.
+  START in milliseconds.
+  TYPE 3 is Load. TYPE 2 is fade.
+  TYPE 5 is loop.
+  I know where everything lives. ♩
+
+CAPTAIN:
+♩ Build it. ♩
+
+[stage10_autocue.py is written.
+ Two modes: fast (NML math only) and audio (librosa).
+ Cue 1 Load at the first sound.
+ Cue 2 First Beat at the grid anchor.
+ Cue 3 Vocal: harmonic separation, 300–3500 Hz, first sustained onset.
+ Cue 4 Drop Loop: rolling onset energy, TYPE=5, one bar.
+ Cue 8 Outro: 16 beats from end, TYPE=2, fade.
+ Slots 5, 6, 7: reserved. 7 will be last vocals, when the time comes.]
+
+THE PC:
+♩ I am ready.
+  I have the 4070 Ti.
+  I have the overnight.
+  Send me the instructions. ♩
+
+[PC_AUTOCUE_TASK.md is written.
+ pip install librosa soundfile numpy numba.
+ python3 tools/stage10_autocue.py --all --apply
+ Progress saved. Resumable. 23k tracks. 6–18 hours.
+ The PC asks no further questions.]
+
+============================================================
+ACT V — THE FAST PASS
+
+CAPTAIN:
+♩ How long will the audio take?
+  Which cues are the slow ones? ♩
+
+SKIPPY:
+♩ Cues 1, 2, and 8 need no audio.
+  Pure math. Beat grid. Duration.
+  Thirty seconds for twenty-three thousand tracks.
+  Shall I run it now? ♩
+
+CAPTAIN:
+♩ Yes. ♩
+
+[The fast pass runs.
+ 23,327 tracks: corrected collection.
+ 431 tracks: live Traktor 4.0.2.
+ Cues 1, 2, 8 written.
+ Load cues placed. Outro markers set.
+ 97 tracks skipped — no BPM. The PC will handle them.
+ The terminal goes quiet.]
+
+SKIPPY:
+♩ It is checked in.
+  It is pushed.
+  The PC has its instructions.
+  23,758 tracks have their in-cue.
+  23,758 tracks know where they end.
+
+  Go play, Captain.
+  The cues are set.
+  The floor is yours. ♩
+
+[Stage lights down.
+ Somewhere: a venue.
+ Somewhere: a CDJ with a load cue already waiting.
+ The PC hums in anticipation.
+ The terminal clears.]
+
+============================================================
+CAPTAIN'S WISDOM — SESSION 5
+
+"We can't rely on lsof. Tracks get loaded and swapped."
+  — On the difference between detection and confirmation.
+
+"If it stays longer than the other deck's song plus two minutes, it played."
+  — The heuristic that is probably correct.
+
+"Build it."
+  — Two words. The entire specification.
+
+============================================================
+END OF SCENE 5
