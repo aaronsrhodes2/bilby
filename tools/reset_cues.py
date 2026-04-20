@@ -582,15 +582,41 @@ def save_progress(done: set[str]) -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def nml_only_cues(e: dict) -> dict:
+    """
+    Compute slots 2 + 8 from NML data alone (no audio needed).
+    Returns {slot: ms} or empty if data is insufficient.
+    """
+    cues: dict = {}
+    beat_anchor_ms = e["beat_anchor_ms"]
+    beat_period_ms = e["beat_period_ms"]
+    bar_ms         = beat_period_ms * 4.0
+
+    # Slot 2 — first beat from NML anchor
+    cues[SLOT_FIRST_BEAT] = beat_anchor_ms
+
+    # Slot 8 — 8 bars before track goes silent (use PLAYTIME_FLOAT)
+    if e["duration_ms"] and e["duration_ms"] > 0:
+        outro_ms = e["duration_ms"] - OUTRO_BARS * bar_ms
+        outro_snapped = snap_bar_start_before(outro_ms, beat_anchor_ms, beat_period_ms)
+        if outro_snapped > beat_anchor_ms + bar_ms:
+            cues[SLOT_OUTRO] = outro_snapped
+
+    return cues
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run",  action="store_true")
-    ap.add_argument("--limit",    type=int, default=0)
+    ap.add_argument("--limit",    type=int, default=0,
+                    help="Limit audio-pass tracks only (NML-only pass always runs fully)")
     ap.add_argument("--nml",      default=str(NML_DEFAULT))
     ap.add_argument("--workers",  type=int, default=4)
     ap.add_argument("--reset-progress", action="store_true",
                     help="Clear progress file and reprocess everything")
+    ap.add_argument("--audio-only", action="store_true",
+                    help="Skip NML-only fast pass, run audio pass only")
     args = ap.parse_args()
 
     nml_path = Path(args.nml)
@@ -606,132 +632,155 @@ def main() -> None:
     nml_entries = parse_nml_entries(nml_path)
     print(f"  {len(nml_entries):,} entries with BPM")
 
-    print("Building audio file index…")
+    print("Building audio file index...")
     audio_index = build_audio_index(nml_entries)
-    print(f"  {len(audio_index):,} local files matched")
+    has_audio   = set(audio_index.keys())
+    print(f"  {len(has_audio):,} tracks with local audio")
+    print(f"  {len(nml_entries) - len(has_audio):,} tracks NML-only (slots 2+8)")
 
     done = load_progress()
-    print(f"  {len(done):,} already processed")
+    print(f"  {len(done):,} already processed\n")
 
-    todo = [
-        e for e in nml_entries
-        if e["dkey"] in audio_index and e["dkey"] not in done
-    ]
-    if args.limit:
-        todo = todo[:args.limit]
-
-    print(f"  {len(todo):,} to process this run\n")
-
-    if not todo:
-        print("Nothing to do.")
-    elif args.dry_run:
-        print("Dry run — showing first 10 matches:")
-        for e in todo[:10]:
-            p = audio_index[e["dkey"]]
-            print(f"  {e['artist']} — {e['title']}")
-            print(f"    BPM={e['bpm']:.1f}  anchor={e['beat_anchor_ms']:.0f}ms")
-            print(f"    audio: {p.name}")
+    if args.dry_run:
+        audio_todo = [e for e in nml_entries if e["dkey"] in has_audio and e["dkey"] not in done]
+        nml_todo   = [e for e in nml_entries if e["dkey"] not in has_audio and e["dkey"] not in done]
+        print(f"Dry run summary:")
+        print(f"  NML-only pass: {len(nml_todo):,} tracks -> slots 2+8")
+        print(f"  Audio pass:    {len(audio_todo):,} tracks -> slots 1-6+8")
+        print("\nFirst 5 audio matches:")
+        for e in audio_todo[:5]:
+            print(f"  {e['artist']} - {e['title']}  BPM={e['bpm']:.1f}  {audio_index[e['dkey']].name}")
         return
 
-    # Load NML tree for writing
+    # Load NML tree once for all writes
     ET.register_namespace("", "")
     tree  = ET.parse(str(nml_path))
     root  = tree.getroot()
     coll  = root.find("COLLECTION")
-    entries_list = coll.findall("ENTRY")
 
-    # Build dkey → entry element map
     entry_map: dict[str, ET.Element] = {}
-    for entry in entries_list:
+    for entry in coll.findall("ENTRY"):
         artist = entry.get("ARTIST", "")
         title  = entry.get("TITLE", "")
         dk = f"{artist.lower().strip()}\t{base_title(title)}"
         entry_map[dk] = entry
 
-    # Process in parallel
-    work_args = [
-        (
-            e["dkey"],
-            str(audio_index[e["dkey"]]),
-            e["bpm"],
-            e["beat_anchor_ms"],
-            e["duration_ms"],
-        )
-        for e in todo
-    ]
-
-    slot_counts = {s: 0 for s in SLOT_TYPE}
-    err_count   = 0
-    saved_count = 0
-    t0          = time.time()
-
-    print(f"Processing with {args.workers} workers…")
-
-    # Backup NML before first write
+    # Backup NML once before any writes
     backup = nml_path.with_suffix(".nml.cue_reset_bak")
     if not backup.exists():
         shutil.copy2(str(nml_path), str(backup))
-        print(f"Backup → {backup.name}\n")
+        print(f"Backup -> {backup.name}\n")
 
-    batch_size = max(1, min(50, len(work_args)))
+    slot_counts: dict[int, int] = {s: 0 for s in SLOT_TYPE}
+    t0 = time.time()
 
-    with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(compute_all_cues, a): a[0] for a in work_args}
+    # ── Phase 1: NML-only fast pass (all tracks without local audio) ──────────
+    if not args.audio_only:
+        nml_todo = [e for e in nml_entries
+                    if e["dkey"] not in has_audio and e["dkey"] not in done]
+        print(f"Phase 1: NML-only pass — {len(nml_todo):,} tracks (slots 2+8)...")
 
-        for i, fut in enumerate(as_completed(futures), 1):
-            dkey = futures[fut]
-            try:
-                dkey_out, cue_dict = fut.result()
-            except Exception as exc:
-                print(f"  [{i}/{len(todo)}] ERROR: {exc}")
-                err_count += 1
-                done.add(dkey)
+        for i, e in enumerate(nml_todo, 1):
+            entry = entry_map.get(e["dkey"])
+            if entry is None:
+                done.add(e["dkey"])
                 continue
+            cue_dict = nml_only_cues(e)
+            apply_cues_to_entry(entry, cue_dict, e["beat_period_ms"])
+            for slot in cue_dict:
+                if isinstance(slot, int):
+                    slot_counts[slot] = slot_counts.get(slot, 0) + 1
+            done.add(e["dkey"])
 
-            if "error" in cue_dict:
-                print(f"  [{i}/{len(todo)}] SKIP ({cue_dict['error']}): {dkey[:50]}")
-                done.add(dkey)
-                err_count += 1
-                continue
-
-            # Apply to NML entry
-            entry = entry_map.get(dkey_out)
-            if entry is not None:
-                entry_meta = next(e for e in todo if e["dkey"] == dkey_out)
-                n = apply_cues_to_entry(entry, cue_dict, entry_meta["beat_period_ms"])
-                for slot in cue_dict:
-                    if isinstance(slot, int):
-                        slot_counts[slot] = slot_counts.get(slot, 0) + 1
-
-                slots_str = " ".join(str(s+1) for s in sorted(
-                    k for k in cue_dict if isinstance(k, int)))
-                print(f"  [{i}/{len(todo)}] slots [{slots_str}] {dkey_out[:55]}")
-            else:
-                print(f"  [{i}/{len(todo)}] WARN: no NML entry for {dkey_out[:55]}")
-
-            done.add(dkey_out)
-            saved_count += 1
-
-            # Save NML + progress every batch_size tracks
-            if i % batch_size == 0:
+            if i % 500 == 0:
                 tree.write(str(nml_path), encoding="utf-8", xml_declaration=True)
                 save_progress(done)
-                elapsed = time.time() - t0
-                rate    = i / elapsed
-                remain  = (len(todo) - i) / rate if rate > 0 else 0
-                print(f"  → saved ({i}/{len(todo)}, ~{remain/60:.0f}min left)\n")
+                print(f"  NML pass: {i:,}/{len(nml_todo):,}...")
+
+        tree.write(str(nml_path), encoding="utf-8", xml_declaration=True)
+        save_progress(done)
+        elapsed1 = time.time() - t0
+        print(f"  Phase 1 done in {elapsed1:.0f}s — {len(nml_todo):,} tracks written\n")
+
+    # ── Phase 2: Audio pass (tracks with local audio) ─────────────────────────
+    audio_todo = [e for e in nml_entries
+                  if e["dkey"] in has_audio and e["dkey"] not in done]
+    if args.limit:
+        audio_todo = audio_todo[:args.limit]
+
+    print(f"Phase 2: Audio pass — {len(audio_todo):,} tracks (slots 1-6+8)...")
+
+    if not audio_todo:
+        print("  Nothing to do.")
+    else:
+        work_args = [
+            (e["dkey"], str(audio_index[e["dkey"]]),
+             e["bpm"], e["beat_anchor_ms"], e["duration_ms"])
+            for e in audio_todo
+        ]
+
+        # Build fast lookup for beat_period_ms
+        meta_map = {e["dkey"]: e for e in audio_todo}
+
+        err_count   = 0
+        saved_count = 0
+        t2          = time.time()
+        batch_size  = 50
+
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            futures = {pool.submit(compute_all_cues, a): a[0] for a in work_args}
+
+            for i, fut in enumerate(as_completed(futures), 1):
+                dkey = futures[fut]
+                try:
+                    dkey_out, cue_dict = fut.result()
+                except Exception as exc:
+                    print(f"  [{i}/{len(audio_todo)}] ERROR: {exc}")
+                    err_count += 1
+                    done.add(dkey)
+                    continue
+
+                if "error" in cue_dict:
+                    print(f"  [{i}/{len(audio_todo)}] SKIP ({cue_dict['error']}): {dkey[:50]}")
+                    done.add(dkey)
+                    err_count += 1
+                    continue
+
+                entry = entry_map.get(dkey_out)
+                if entry is not None:
+                    e_meta = meta_map[dkey_out]
+                    apply_cues_to_entry(entry, cue_dict, e_meta["beat_period_ms"])
+                    for slot in cue_dict:
+                        if isinstance(slot, int):
+                            slot_counts[slot] = slot_counts.get(slot, 0) + 1
+                    slots_str = " ".join(str(s+1) for s in sorted(
+                        k for k in cue_dict if isinstance(k, int)))
+                    print(f"  [{i}/{len(audio_todo)}] slots [{slots_str}] {dkey_out[:55]}")
+                    saved_count += 1
+                else:
+                    print(f"  [{i}/{len(audio_todo)}] WARN: no NML entry for {dkey_out[:55]}")
+
+                done.add(dkey_out)
+
+                if i % batch_size == 0:
+                    tree.write(str(nml_path), encoding="utf-8", xml_declaration=True)
+                    save_progress(done)
+                    elapsed = time.time() - t2
+                    rate    = i / elapsed if elapsed > 0 else 1
+                    remain  = (len(audio_todo) - i) / rate
+                    print(f"  -> saved ({i}/{len(audio_todo)}, ~{remain/60:.0f}min left)\n")
+
+        print(f"  Phase 2 done: {saved_count} written, {err_count} errors")
 
     # Final save
     tree.write(str(nml_path), encoding="utf-8", xml_declaration=True)
     save_progress(done)
 
     elapsed = time.time() - t0
-    print(f"\nDone in {elapsed/60:.1f}min")
-    print(f"  Processed: {saved_count}")
-    print(f"  Errors:    {err_count}")
-    print(f"  Cue slots written:")
+    print(f"\nTotal time: {elapsed/60:.1f}min")
+    print(f"Cue slots written across all tracks:")
     for slot, count in sorted(slot_counts.items()):
-        print(f"    Slot {slot+1} ({SLOT_NAME[slot]}): {count:,}")
+        print(f"  Slot {slot+1} ({SLOT_NAME[slot]}): {count:,}")
     print(f"\nNML written: {nml_path}")
 
 
