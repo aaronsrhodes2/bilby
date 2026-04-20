@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<NML VERSION="20"><HEAD COMPANY="www.native-instruments.com" PROGRAM="Traktor Pro 4" />
+<COLLECTION ENTRIES="17"><ENTRY MODIFIED_DATE="2024/9/30" MODIFIED_TIME="24322" AUDIO_ID="ANY1Vo7/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////gxAAAAAAAA==" TITLE="Gun" ARTIST="Jeff in Leather"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Jeff in Leather/:Gun - Single (2023-01-27)/:" FILE="01 - Gun.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="1" TRACK="1" TITLE="Gun - Single" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="263872" GENRE="Pop" COVERARTID="111/PPYPBNDVUQLBDDQL534GDXC2JWQA" PLAYCOUNT="5" PLAYTIME="214" PLAYTIME_FLOAT="213.616074" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2023/1/27" FLAGS="12" FILESIZE="7468" COLOR="4" />
+<TEMPO BPM="111.999725" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.801041" PERCEIVED_DB="-1.235519" ANALYZED_DB="-1.235519" />
+<MUSICAL_KEY VALUE="8" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="3.189479" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="111.999725" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="3.189479" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="2146.051883" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/9/6" MODIFIED_TIME="82567" AUDIO_ID="ANkBRTRURFVFRVVUaYeHd4iHiId4icmZmomZqJmqipqoqquKqrm6qoqauZirmJmXmaqJh5moiYeamImpiJmJiah2Zmdmh3VWZ4m7vMusu8q7vLy827vMq8zbvMy8u8qqq6u7uqqaqqqpu6urvLqqq6uauau7qYqYmZu7mbvMysy8u8zLzMy7vMrLvKzMu8u7vMy62sucq7q6upmKpDIlWHllh4ZoeGZ3lnh4Z3eFd4hXiZZ3d2h3dnd4eaqXmal6mripqYqauKqpiqqYqaiJm7vMy7ysq8zLvLy7vMq8vLvLu8usvczKy8ybq7m6zLy7usrLm5upurupiqZEIhEQAA==" TITLE="Scratch" ARTIST="Contagion"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Contagion/:Contaminant PCB (1992)/:" FILE="Scratch_2.mp3" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="13" TRACK="4" TITLE="Contaminant PCB" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="192000" GENRE="Electronic / Industrial / Rock" LABEL="Capitol Records" COVERARTID="004/EUM0LQCIU5YNBBBLSZH0BIC3MDTB" KEY="7m" PLAYCOUNT="4" PLAYTIME="217" PLAYTIME_FLOAT="216.502853" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="1992/9/1" FLAGS="14" FILESIZE="5264" COLOR="6" />
+<TEMPO BPM="113.823517" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.937053" PERCEIVED_DB="0.667030" ANALYZED_DB="0.667030" />
+<MUSICAL_KEY VALUE="15" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="461.466640" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="113.823517" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="5" START="461.466640" LEN="8434.109458" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="8895.576098" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/9/6" MODIFIED_TIME="82574" AUDIO_ID="ANACVVRFU0RVRFVEVURWU0VUVVREVEREQ0RVVUREVFRURVVVVVV3d2d2ZnZod2Z4d3d1aHd3d3h3eIdnd3eHdnd3iYdmd3eIet3d3d3N3d3d3d3d3d3d3d3e3d3d3czd3dzN3d3t3d3d3d3d7v7u7u3u7e/+7u/u/u7t7f7+/+7v7u3e7/7u7v3u7u7t7v2ImYiGeIiIiGaImImHeJiZiI7u3u7v7u7d7/7t7/7u7+7+7u7+7v3+7u7u7//u/u7u7t3u+5h1ZmRGd2Z3Zmd2V2VWZmVlZ3dWZkRXdmd2ZndldlVmVUVFZlNEMiNDRUREMyIiEjMiQjJVIQAAAAAAAA==" TITLE="Hey… It’s Me" ARTIST="Hocico"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Hocico/:Tiempos de furia (2010)/:" FILE="Hey... It’s Me_2.mp3" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="13" TRACK="5" TITLE="Tiempos de furia" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="237206" GENRE="Electronic" LABEL="Out of Line" COVERARTID="056/YJTSDFCZY2C0FB5CE5K5DGCKD1LB" KEY="9d" PLAYCOUNT="1" PLAYTIME="208" PLAYTIME_FLOAT="207.673462" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="2010/10/1" FLAGS="14" FILESIZE="6180" />
+<TEMPO BPM="134.000122" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.822945" PERCEIVED_DB="2.516838" ANALYZED_DB="2.516838" />
+<MUSICAL_KEY VALUE="8" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="437.877983" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="134.000122" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="437.877983" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/12/30" MODIFIED_TIME="1696" AUDIO_ID="AQcANVVVn+7t7+/+7u//7////v7u7v//7v7///////7M3M26zM27zs7czdzu/+7/////////////+erN6t2b3////////v///////////////+/////////////u/v///////////+/+7///////////u9re6eq9////////////////7v///////////////93NvNzMzNzLzO///v/////drd/////////////////////////////////r3///////////////////////////////////////////////////////////////////3NzNuHdkM0RFUyNERCEAAA==" TITLE="SANCTIFIED" ARTIST="Panic Priest"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Panic Priest/:PSYCHOGORIA (2022)/:" FILE="SANCTIFIED_3.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="11" TRACK="1" TITLE="PSYCHOGORIA" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="273120" GENRE="Alternative" LABEL="Negative Gain Productions" COVERARTID="035/DN45H2CIV4AYQAUE2J2TCDLGTHOC" KEY="3m" PLAYCOUNT="2" PLAYTIME="264" PLAYTIME_FLOAT="263.077545" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2022/10/21" FLAGS="12" FILESIZE="9456" />
+<TEMPO BPM="147.000092" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.178908" PERCEIVED_DB="-1.616745" ANALYZED_DB="-1.616745" />
+<MUSICAL_KEY VALUE="23" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="990.844131" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="147.000092" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="990.844131" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/12/11" MODIFIED_TIME="22522" AUDIO_ID="AQI83qmYiIjJd3d3etvMy7vMzMzM//////////////7d/u7u////7M///O///////////8///////////////////////////////////////p/////////////+7d3e6pqZh73//7///////////+7//bzLnd/////////////////////////f///////////////////////////////t3d3MzJmqqqmb3d7dvP7N/e7N3d7u//2Zrv///////////////////////////////////+///////////////////////////////////////////////////zAAAA==" TITLE="Reveal" ARTIST="Rabbit Junk"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Rabbit Junk/:Reveal (2019)/:" FILE="Reveal_3.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="6" TRACK="3" TITLE="Reveal" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="261182" GENRE="Cyberpunk / Digital Hardcore / Industrial / Industrial Metal / Metal" COVERARTID="047/PJSZWRBWDP4YUB1RJ2O0DJ4HTNDB" KEY="8m" PLAYCOUNT="5" PLAYTIME="258" PLAYTIME_FLOAT="257.660156" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2019/5/15" FLAGS="12" FILESIZE="8932" COLOR="1" />
+<TEMPO BPM="102.000206" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-1.000611" PERCEIVED_DB="-4.433159" ANALYZED_DB="-4.433159" />
+<MUSICAL_KEY VALUE="22" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="1365.532637" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="102.000206" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="1365.532637" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="10777.278335" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/9/7" MODIFIED_TIME="20615" AUDIO_ID="AaEDRERERURURFRUVlVFVUVlVVVEVVRVRGZVVVRWZVVlVWZEVlZmZmZ2ZmZlVlZmZmdmZldmZoZmd2Z2Zmd3d3Znd2d2Z4ZVVlV3ZVZlVWZmZmZndmZWZmZmdmZmZmZnZmdnZ3iHdnaIh3d3eIh3d3d2VWZlZ2VlVWdlV3VWZVZ2Z2Z2Z1VWVFdkRmVVZlV1RWVUVVRWZVVVRVRVVVZmVWZWdlZndmdlZmVmZVVmZlZmZmZmVlVVZ3ZmZmZ2d3dnZneId3eIh3Z3d4iHh3d4hlZlVWZmZmZmZmVmZ2VWdmd3ZnZVZ2VnVVZmVnVWZmd2Znd3d2VlQzMiEREBAAAAAA==" TITLE="Assimilate" ARTIST="Skinny Puppy"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Skinny Puppy/:Bites (1985)/:" FILE="Assimilate_3.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="9" TRACK="1" TITLE="Bites" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="280828" GENRE="Industrial" LABEL="Nettwerk" COVERARTID="056/YFIYPOCCII43DBVILYTYASQFAYFC" CATALOG_NO="NTL 30002" KEY="6m" PLAYCOUNT="2" PLAYTIME="417" PLAYTIME_FLOAT="416.661591" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="1985/1/1" FLAGS="12" FILESIZE="15020" COLOR="1" />
+<TEMPO BPM="137.105972" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="0.710621" PERCEIVED_DB="5.706947" ANALYZED_DB="5.706947" />
+<MUSICAL_KEY VALUE="20" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="396.070153" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="137.105972" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="396.070153" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/9/6" MODIFIED_TIME="82588" AUDIO_ID="AR4BIhIhIhRzJDI0M0VXZYhYdmhlVUh3msl5t3qKx1iIdWhTVoZlVnllRGh2VlV1RVV3aIZ2VXibiHZ5Z0VEVUVVVYeHZ3Z1VVRVRVVVZVVmVWVWYRNHiIi6dnZVVYdmNld1WJhlZWd1eIh1VnZmablnZ5iIabqImJmpisvbrbvbvt78zKzHQzRmR2REVplnUzd3eIiZqry5zb3c7O7O7f7v3v+4uYeng1hicUYAEiM1achnd2dneGVFZ5mYaLllZVRlZ4i5eJl3mbczM0M0M1ZUVURXt3yUUzVIl4VTNDNERERUQzMzMzQiEiIiIiMyMiIhIhESIRERESEREQAAAA==" TITLE="Coin-Operated Boy" ARTIST="The Dresden Dolls"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:The Weeknd/:House of Balloons (2012)/:" FILE="Wicked Games (slab'ed)_2.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="12" TRACK="6" TITLE="The Dresden Dolls" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="274856" GENRE="Rock" LABEL="[no label]" COVERARTID="012/MUDWRJDO3IF4XCAZHITEAV0AR2JB" KEY="2d" PLAYCOUNT="1" PLAYTIME="287" PLAYTIME_FLOAT="286.413330" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2003/9/26" FLAGS="12" FILESIZE="10308" />
+<TEMPO BPM="134.869247" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.453015" PERCEIVED_DB="0.398254" ANALYZED_DB="0.398254" />
+<MUSICAL_KEY VALUE="7" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="320.390821" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="134.869247" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="320.390821" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2025/1/13" MODIFIED_TIME="19495" AUDIO_ID="ARRpiInvq6uqu7q6urq7u6tXWru7vLu7u/3Mu9zMzNzMzL3MzMzIZmh4dodnZ2d4h3a63+7v//zf/c3f/e//7t3e7u/9zf3t/f7u///u3M3e7N7t7c3e393d3uzMu7zMu8zc3czdyniNzLzLy8yovMzM3MzM3M3uzd3t273O3M7Nzc7d39zd7c3IZniIeHiP/u3v/t7+3d7v3v/+7t3u3+/e/+7O397///3tzd3u3d3O3d3e/c3d7Jqpq6qpm6u7u8u7u8/83u7d3tzdze7v7e3dzu7+/83/3t7+3u/u7ezd3e7e3t7O797+/v3ndkZXZWpkR0hkWKiZUxAAAAAAAA==" TITLE="Soulhunter (Body Formed)" ARTIST="T.D.L.L."><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:T.D.L.L/:This is... Techno Body Music, Volume 1 (2005)/:" FILE="Soulhunter (Body Formed)_2.mp3" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="13" TRACK="6" TITLE="This is... Techno Body Music, Volume 1" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="192000" GENRE="Ebm / Electro / Electronic / Techno" LABEL="Masterhit Recordings" COVERARTID="072/I4S1MNBXAQJL2AAROAHIBS54Y30A" KEY="5m" PLAYCOUNT="1" PLAYTIME="276" PLAYTIME_FLOAT="275.539581" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2005/5/2" FLAGS="14" FILESIZE="6640" />
+<TEMPO BPM="134.001266" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.795516" PERCEIVED_DB="0.657310" ANALYZED_DB="0.657310" />
+<MUSICAL_KEY VALUE="13" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="39.784964" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="134.001266" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="39.784964" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="17950.063449" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="39442.397631" LEN="0.000000" REPEATS="-1" HOTCUE="3" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="46606.509025" LEN="0.000000" REPEATS="-1" HOTCUE="4" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="53770.620419" LEN="0.000000" REPEATS="-1" HOTCUE="5" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/9/6" MODIFIED_TIME="82596" AUDIO_ID="ARIkZWZVRUZlZWVmZlZWVd79/+7ez/7c2+7dzbp47/7//u6//t7t/u3crt3v/v/+/+//7////f7v/9mJh7//////////////////////////////////+5je/e/u38797Oze3c66d+/9///+v/7e7P/t3a7t7/7////f/+/+//7+3//qiYev///////////////////////////////////++FWEJXZlVEVVRUdmVURFRFVHZFRVZERVWGVUVFVWZ2ZUn///////////////////////////////////3f///////////////////////////////////////6MAAA==" TITLE="Murder" ARTIST="Faderhead"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Faderhead/:Asteria (2019)/:" FILE="Murder_2.mp3" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="30" TRACK="16" TITLE="DJ Melting Girl | Death Guild XXX" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="274594" GENRE="DJ Mixes" COMMENT="Visit http://faderhead.bandcamp.com" KEY_LYRICS="Your scars are maps of who you are  Like tattoos you did not choose  I leave the body I know    I drive further  Murder everything I am  I am    In my heart   I know I could go far  If my shadow would stay behind me  I leave the body I know" COVERARTID="016/QEOPVXBYG2BC3AITMCXICZXL3GHC" KEY="12m" PLAYCOUNT="1" PLAYTIME="274" PLAYTIME_FLOAT="273.815521" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="2019/1/1" FLAGS="14" FILESIZE="9412" />
+<TEMPO BPM="127.999924" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-1.275689" PERCEIVED_DB="0.130493" ANALYZED_DB="0.130493" />
+<MUSICAL_KEY VALUE="14" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="52.776832" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="52.776832" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="127.999924" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="52.776832" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/11/25" MODIFIED_TIME="1334" AUDIO_ID="ASoBIREQARA0REI0RVeIiHiJmHiIh3iZm93d7M3u7L3eoiKd/////////////CX/////////////////////////////9SIiIyIiRDMzMzM0QzNEMzMzZTREMzM0RFVVREVnVWZmV2eqmqrN+5l6////////////////////////////////////////////9ir//////////////9v8z8z+j///////////////////////////927//////////////////////////////////////////////////////////////////////////////////////+7oEAAAAA==" TITLE="El Chupacabra" ARTIST="Nachtmahr"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Nachtmahr/:Mädchen in Uniform (2010)/:" FILE="El Chupacabra_2.mp3" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="13" TRACK="4" TITLE="Mädchen in Uniform" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="192000" GENRE="Ebm / Electro / Electronic / Industrial" LABEL="Trisol" COVERARTID="070/GCFBYFBYUCMWTDVZYGKNA5PT0JFB" KEY="11m" PLAYCOUNT="11" PLAYTIME="299" PLAYTIME_FLOAT="298.083252" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2010/1/29" FLAGS="14" FILESIZE="7140" COLOR="7" />
+<TEMPO BPM="146.999847" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-1.557479" PERCEIVED_DB="0.108856" ANALYZED_DB="0.108856" />
+<MUSICAL_KEY VALUE="19" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="252.603441" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="146.999847" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="252.603441" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="13313.841489" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2025/1/13" MODIFIED_TIME="22473" AUDIO_ID="ANUX+6qYKrq5pGzM2E2r+8996mLvqPy7pWe+/vzb/X/3a7iLeOk8xa+VzctZu9iVFv/8Wv//1WYzOlM0pDNIMzZzM6UzS0M1yIeMiIuoiMmIjamJ2Yi7mY2pif7dr93b/eze3b7t2v7tv93M/ev//9///P//3/////3//8///P//7//v//3//9///f/////f//3//9/////+///f//3//+/////+//+CIhW7reYRA6uk///P/+3//v//z//8///f/////u/8z/7M7/7u/9///v//3//0ERH//+///f//7////////+///v////////7//9///v////////7//1AAAA==" TITLE="Gelöbnis" ARTIST="P·A·L"><LOCATION DIR="/:Users/:aaronrhodes/:Music/:Bryan Pollard/:P·A·L/:Klubs N-S/:" FILE="Gelöbnis.mp3" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="15" TRACK="11" TITLE="EBM Club Classics, Volume 3" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="192000" GENRE="Ebm / Electronic" LABEL="Synthetic Symphony" COVERARTID="012/MYAJCQBZPTTIJDY1CUKGAXKKSHIC" KEY="6m" PLAYCOUNT="3" PLAYTIME="213" PLAYTIME_FLOAT="212.845718" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="2001/10/15" FLAGS="14" FILESIZE="5124" />
+<TEMPO BPM="120.003433" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.861629" PERCEIVED_DB="-3.071465" ANALYZED_DB="-3.071465" />
+<MUSICAL_KEY VALUE="20" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="418.810725" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="120.003433" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="418.810725" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="44417.551911" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="50417.380349" LEN="0.000000" REPEATS="-1" HOTCUE="2" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/11/25" MODIFIED_TIME="18000" AUDIO_ID="AP1v/v3d7/7t7u/u7d7u/u7e/+7t//7u/v/+7t7tzcu77/7+7//v7+///+////7d3u///v////7//////++7qrmbyKyWeqqGZqy5hmm7us3M/83ty+3bzc7u7MzN7b7///7////+////7////t3u///v/+//7////////t3e/+/u//7//v///////+3N7v/+///v//////7///7t3////////////////+///cu7u7zMvLnLy8vLzMy7q+//////7//////////////+/////////////////////////+////7//////////v///+///v////1BWJiJVDMzIQAAAA==" TITLE="Great and Unfortunate Things (Ashbury Heights remix)" ARTIST="XMH"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:XMH/:In Your Face (2014)/:" FILE="Great and Unfortunate Things (Ashbury Heights remix)_2.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="13" TRACK="2" TITLE="In Your Face" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="261384" GENRE="Ebm / Electro / Electronic / Industrial" LABEL="Alfa Matrix" COMMENT="(Ashbury Heights Remix)" COVERARTID="113/RLYJ21CW3UY5VCSJAM5VCA4HMMDA" CATALOG_NO="AM2206DCD" KEY="3m" PLAYCOUNT="1" PLAYTIME="254" PLAYTIME_FLOAT="253.223419" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="2014/4/4" FLAGS="12" FILESIZE="8764" COLOR="7" />
+<TEMPO BPM="124.999275" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.696886" PERCEIVED_DB="-0.044731" ANALYZED_DB="-0.044731" />
+<MUSICAL_KEY VALUE="23" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="82.251109" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="124.999275" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="82.251109" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="30802.429235" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="46162.518298" LEN="0.000000" REPEATS="-1" HOTCUE="3" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="62962.615711" LEN="0.000000" REPEATS="-1" HOTCUE="4" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="197077.911377" LEN="0.000000" REPEATS="-1" HOTCUE="6" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="199763.408928" LEN="0.000000" REPEATS="-1" HOTCUE="2" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="243173.873901" LEN="0.000000" REPEATS="-1" HOTCUE="7" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/9/6" MODIFIED_TIME="82627" AUDIO_ID="AUUTQjQjQzQzREVEVUVUV3eIiYmZrLq7u8vM72MzNTMzM1MzNUMzbfzLu8u8u8/cy8zMvMztzt3t3tvu/uzO7ey+/e3u3e7f3e7u7d3//d3e/czM3d3u/szMzu7//9zcz+7v/+3d3Yd3eHd3eKu6u7vM3//d7c7d7szt3+zd7//v7u7u3v7u3u7u3d7uze3v67y97e/v7M3N3d7d/szczd3v/szMzu7//9zd3v7v//3d3e7v//3d7e/u///d3N3d3d3d3e3e3e7d7d3v7u7u3v7+3e3+3t//3f////7e/u/////d7d7////t3u7///7t3EQzMzMzRVQzMzMzMyEAAA==" TITLE="Spiders" ARTIST="Ashbury Heights"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Ashbury Heights/:Morningstar in a Black Car (2008)/:" FILE="Spiders.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="9" TRACK="2" TITLE="Morningstar in a Black Car" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="277670" GENRE="Ebm / Electro / Electronic / Synth-Pop" LABEL="Out of Line" KEY="11m" PLAYCOUNT="1" PLAYTIME="325" PLAYTIME_FLOAT="324.653320" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="2008/7/18" FLAGS="12" FILESIZE="11640" COLOR="5" />
+<TEMPO BPM="119.999268" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.371069" PERCEIVED_DB="-0.190948" ANALYZED_DB="-0.190948" />
+<MUSICAL_KEY VALUE="19" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="790.113449" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="119.999268" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="790.113449" LEN="0.000000" REPEATS="-1" HOTCUE="0" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/12/9" MODIFIED_TIME="29988" AUDIO_ID="APABERERERARERnLvcq8y7zczNuq26rLqs3czbq9uq26re7d3Lrbu9yrzd3e282pnM2rvMzbvMqZzLm7qaupm5mbq4uam7mbqYm6qKq5qsqrzL3+3+7cvbzN3e7Yq83cutzL3LvO7t7Lvcu8y7ze7uy726i8y7zLrLvOuo3NrN26nczd/u7s7u7czLzN3t3N7czdu83u7+zu27vLvN3e7pq8ykIiEiIiIjMzRERERERVRVVVVVZVVVZmZ3mXeJiZqau7zM6WVUR6ypq7m7qou97+2rzMzbut3e3OvM3d/tzd3crau93u7M7d7L28vd3uzf7cvNu73O7cuq/pIAAAAA==" TITLE="The Pit" ARTIST="Priest"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Priest/:The Pit (2017)/:" FILE="The Pit.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="1" TRACK="1" TITLE="The Pit - Single" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="262767" GENRE="Alternative" PLAYCOUNT="7" PLAYTIME="241" PLAYTIME_FLOAT="240.399994" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/12" RELEASE_DATE="2017/3/9" FLAGS="12" FILESIZE="8304" COLOR="2" />
+<TEMPO BPM="119.999046" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.328190" PERCEIVED_DB="-0.286209" ANALYZED_DB="-0.286209" />
+<MUSICAL_KEY VALUE="16" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="134.806529" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="119.999046" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="134.806529" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="8134.870108" LEN="0.000000" REPEATS="-1" HOTCUE="1" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/11/4" MODIFIED_TIME="17158" AUDIO_ID="AQcv/////////////////////3f/////////////////////////////////////////////qe/////////////////////+if/////////////////////8r/////////////////////+G7////////////////////////////////////////////7nf//////////////////////2EJVNGZVNUI2dTNkNXZlVlRGurq7rd2qnKqZyprKveu7rMqP/////////////////////////////////////////////9z//////+/+7//+/+7/7u+TNoUQAAAAAAAA==" TITLE="Interlace" ARTIST="Shiv-R"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Shiv-R/:Interlace (2019)/:" FILE="Interlace_2.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="4" TRACK="1" TITLE="Interlace" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="260815" GENRE="Ebm / Electro / Electronic / Industrial" LABEL="Infacted Recordings" COVERARTID="077/NSVBULAOAOOQHA5N2HBSCU0CGDKD" KEY="3m" PLAYCOUNT="1" PLAYTIME="263" PLAYTIME_FLOAT="262.600677" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2019/9/6" FLAGS="12" FILESIZE="9096" COLOR="5" />
+<TEMPO BPM="105.500298" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.785292" PERCEIVED_DB="-0.300224" ANALYZED_DB="-0.300224" />
+<MUSICAL_KEY VALUE="23" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="3" START="877.642185" LEN="0.000000" REPEATS="-1" HOTCUE="0" />
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="4" START="19076.642990" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="105.500298" />
+</CUE_V2>
+<CUE_V2 NAME="n.n." DISPL_ORDER="0" TYPE="0" START="19076.642990" LEN="0.000000" REPEATS="-1" HOTCUE="2" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/11/24" MODIFIED_TIME="85867" AUDIO_ID="ASIAAryrqv6ryu7du/zv7O3O3ezOzf7vzO393cr8zM3cu97u3s3t3t3d7d3b3s3czercz/zLve7rvs39zs7t/8/s39/87t/768/93b7czN66283N3M3t3d7c3c3u3Nzd7d7d7d3Ky77Ly8zNyc2829ysvPyKitu8rOq+rNnMr9vcvuzbncvrvbzru5rKqqzKuq3LvMzM3d3c3NzN3d3d3My8rNzLrbzMvLvM7a3K3t7M3O/czf7N2+7O7O7P/P29zP/M3P7d3d3uze3u7d3d3uze3v/d3t7uzu7u/d3t3tzt7e3v7ezf7evO39vNz+zLvdylVDMyIhEQAAAAAAAAAA==" TITLE="Everything Is Under Control" ARTIST="Snog"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Snog/:Everything Is Under Control (2013)/:" FILE="Everything Is Under Control_2.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="10" TRACK="2" TITLE="Babes in Consumerland" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="262704" GENRE="Alternative Rock / Electro / Electronic / Rock / Synth-Pop" LABEL="Metropolis Records" COVERARTID="066/CO0WS2DTONRFQDY1G3RZBT412TWA" CATALOG_NO="MET 850" KEY="4m" PLAYCOUNT="5" PLAYTIME="290" PLAYTIME_FLOAT="289.706665" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2013/4/23" FLAGS="12" FILESIZE="10060" COLOR="6" />
+<TEMPO BPM="113.000107" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.211638" PERCEIVED_DB="0.925613" ANALYZED_DB="0.925613" />
+<MUSICAL_KEY VALUE="18" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="1984.952927" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="113.000107" />
+</CUE_V2>
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="0" START="1984.952927" LEN="0.000000" REPEATS="-1" HOTCUE="0" COLOR="#FFFFFF" />
+</ENTRY>
+<ENTRY MODIFIED_DATE="2024/12/30" MODIFIED_TIME="3940" AUDIO_ID="AU0CRXirze7v////3M3v//7u/+7e7u/+7u///////////////////////////////////////////////////////////////t3u/////////////////////////9uZq//////////////////////////////////////////d3e7////////////////////////+25mruqqYiZurqrzL3Nrf//////////////////7v///////////////////////////////////////+3v7////////////////////////////////////////XZVZmeId3dmZUQiIAAA==" TITLE="Cursive Eve" ARTIST="I:Scintilla"><LOCATION DIR="/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:I_Scintilla/:Optics (2007)/:" FILE="Cursive Eve.m4a" VOLUME="Macintosh HD" VOLUMEID="Macintosh HD" />
+<ALBUM OF_TRACKS="12" TRACK="1" TITLE="Optics" />
+<MODIFICATION_INFO AUTHOR_TYPE="user" />
+<INFO BITRATE="268576" GENRE="Electronic" COVERARTID="115/TXI44WDWRQXXIAZ22RY5A2ASP5MA" PLAYCOUNT="1" PLAYTIME="334" PLAYTIME_FLOAT="333.213348" RANKING="0" IMPORT_DATE="2025/1/14" LAST_PLAYED="2025/1/13" RELEASE_DATE="2007/6/15" FLAGS="12" FILESIZE="11532" />
+<TEMPO BPM="97.999237" BPM_QUALITY="100.000000" />
+<LOUDNESS PEAK_DB="-0.954009" PERCEIVED_DB="-2.255600" ANALYZED_DB="-2.255600" />
+<MUSICAL_KEY VALUE="13" />
+<CUE_V2 NAME="AutoGrid" DISPL_ORDER="0" TYPE="4" START="2121.584892" LEN="0.000000" REPEATS="-1" HOTCUE="-1"><GRID BPM="97.999237" />
+</CUE_V2>
+</ENTRY>
+</COLLECTION>
+<SETS ENTRIES="0" />
+<PLAYLISTS><NODE TYPE="FOLDER" NAME="$ROOT"><SUBNODES COUNT="1"><NODE TYPE="PLAYLIST" NAME="HISTORY"><PLAYLIST ENTRIES="18" TYPE="LIST" UUID="de45bf6707f1495291278c78f8c9f5b9"><ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:Music/:Bryan Pollard/:P·A·L/:Klubs N-S/:Gelöbnis.mp3" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Priest/:The Pit (2017)/:The Pit.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Ashbury Heights/:Morningstar in a Black Car (2008)/:Spiders.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:XMH/:In Your Face (2014)/:Great and Unfortunate Things (Ashbury Heights remix)_2.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Faderhead/:Asteria (2019)/:Murder_2.mp3" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Contagion/:Contaminant PCB (1992)/:Scratch_2.mp3" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Skinny Puppy/:Bites (1985)/:Assimilate_3.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Hocico/:Tiempos de furia (2010)/:Hey... It’s Me_2.mp3" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:T.D.L.L/:This is... Techno Body Music, Volume 1 (2005)/:Soulhunter (Body Formed)_2.mp3" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Panic Priest/:PSYCHOGORIA (2022)/:SANCTIFIED_3.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Duran Duran/:Bravo Hits 4 (1993)/:Come Undone.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Nachtmahr/:Mädchen in Uniform (2010)/:El Chupacabra_2.mp3" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Jeff in Leather/:Gun - Single (2023-01-27)/:01 - Gun.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:I_Scintilla/:Optics (2007)/:Cursive Eve.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Shiv-R/:Interlace (2019)/:Interlace_2.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Rabbit Junk/:Reveal (2019)/:Reveal_3.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:Snog/:Everything Is Under Control (2013)/:Everything Is Under Control_2.m4a" />
+</ENTRY>
+<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="Macintosh HD/:Users/:aaronrhodes/:development/:music organize/:corrected_music/:The Weeknd/:House of Balloons (2012)/:Wicked Games (slab'ed)_2.m4a" />
+</ENTRY>
+</PLAYLIST>
+</NODE>
+</SUBNODES>
+</NODE>
+</PLAYLISTS>
+<INDEXING />
+</NML>

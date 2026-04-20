@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<NML VERSION="19">
+<HEAD COMPANY="www.native-instruments.com" APPLICATION="Traktor" />
+<COLLECTION ENTRIES="0">
+    </COLLECTION>
+<PLAYLISTS>
+    <NODE TYPE="FOLDER" NAME="Playlists">
+        <SUBNODES>
+            <NODE TYPE="PLAYLIST" NAME="Goth Industrial Full Set">
+                <PLAYLIST ENTRIES="68">
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Bauhaus - Dark Entries.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/The Sisters of Mercy - Alice.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Siouxsie and the Banshees - Spellbound.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Kælan Mikla - Sólstóður.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/She Past Away - Ritüel.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Boy Harsher - Pain.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Molchat Doma - Sudno.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Nitzer Ebb - Join in the Chant.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Front 242 - Headhunter v1.0.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/VNV Nation - Beloved.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/The Cure - Just Like Heaven.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Macintosh HD/Users/aaronrhodes/Music/Depeche Mode - Personal Jesus.mp3" /></ENTRY>
+                </PLAYLIST>
+            </NODE>
+        </SUBNODES>
+    </NODE>
+</PLAYLISTS>
+</NML>

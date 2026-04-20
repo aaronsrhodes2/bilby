@@ -6,7 +6,14 @@ state/*
 !state/lyrics_summary.json
 !state/drive_known.json
 corrected_music/
-corrected_traktor/
+corrected_traktor/.stfolder/
+corrected_traktor/*.nml.pre-*
+corrected_traktor/*.nml.bak*
+corrected_traktor/*.nml.*_bak
+corrected_traktor/*.nml.autocue_bak
+corrected_traktor/*.nml.cue_reset_bak
+corrected_traktor/*.sync-conflict-*
+corrected_traktor/collection_pre_*.nml
 review.json
 unmappable.json
 __pycache__/
