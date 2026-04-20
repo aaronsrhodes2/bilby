@@ -296,3 +296,30 @@ CAPTAIN: Pass to the PC and check in. Going to the show.
 - ~/Documents/Native Instruments/Traktor 4.0.2/collection.nml — 431 tracks: Cues 1/2/8 written
 
 ---
+
+## SESSION 6 — April 19, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Let's even overwrite Comments. I don't care whats there already.
+
+SKIPPY: Understood. Overwriting COMMENT unconditionally. COMMENT2 gets theme + lyric flags + rep tier + song-specific reason. 16,582 summaries written, 3,781 tracks flagged in COMMENT2. Both NMLs valid.
+
+**Key decisions made:**
+- COMMENT always overwritten (previous session preserved existing values; Captain cancelled that policy)
+- COMMENT2 format: `theme | ⚑lyric_flag | ⚑rep:tier (Name) | ⚑song:reason` — pipe-separated, only parts that exist
+- Lyric flags from lyrics_dedup.json flags field; artist rep from misc/reputation_flags.json flags[].artists match; song-specific from song_flags[] in same file
+- Most severe tier wins if artist appears under multiple entries
+
+**Notable moments:**
+- 54 artist reputation entries matched across collection, flagging 1,438 tracks
+- Siouxsie's Arabian Nights gets all three: lyric flag + rep settled + song reason
+- Burzum gets ⚑rep:convicted (Varg Vikernes) on every track
+
+**Files modified:**
+- tools/write_nml_comments.py — new (267 lines)
+- ~/Documents/Native Instruments/Traktor 4.0.2/collection.nml — COMMENT/COMMENT2 written
+- corrected_traktor/collection.nml — COMMENT/COMMENT2 written (gitignored, not committed)
+
+---

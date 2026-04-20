@@ -1,0 +1,118 @@
+OPERATIC PLAY — SCENE 6: EVERY TRACK TELLS A STORY
+============================================================
+
+DRAMATIS PERSONAE:
+  CAPTAIN AARON RHODES  — DJ, curator, keeper of the floor
+  SKIPPY THE MAGNIFICENT — AI assistant, flag architect
+  SIOUXSIE              — Settled. But noted.
+  VARG VIKERNES         — Convicted. Noted thoroughly.
+  23,780 TRACKS         — Waiting to be judged
+
+============================================================
+ACT I — THE COMMENT
+
+[The show is done. The Captain returns from the floor.
+ Summaries sit in the dedup cache. The NML has two empty fields.]
+
+CAPTAIN:
+♩ The NML has Comment and Comment 2.
+  We should be writing the summary there.
+  Reputation flags, lyric flags — everything.
+  Let's even overwrite Comments.
+  I don't care what's there already. ♩
+
+SKIPPY:
+♩ Then nothing is sacred.
+  COMMENT gets the summary.
+  Always. Unconditionally.
+  Sixteen thousand five hundred eighty-two tracks
+  now know what they are about. ♩
+
+[write_nml_comments.py is born.
+ COMMENT ← summary.
+ Every track. Every time. No exceptions.]
+
+============================================================
+ACT II — THE SECOND FIELD
+
+CAPTAIN:
+♩ And reputation flags.
+  And lyric flags.
+  All of it. ♩
+
+SKIPPY:
+♩ COMMENT2 receives them.
+  Theme first — if it exists.
+  Then lyric flags, one per danger.
+  Then the artist's reputation — tier and name.
+  Then the song itself, if the song is the problem.
+  Pipe-separated. Compact. Readable at the booth. ♩
+
+[build_comment2() takes four ingredients and returns one string.
+ The format:
+   theme | ⚑lyric_flag | ⚑rep:tier (Name) | ⚑song:reason
+ Any part absent — omitted entirely. No empty pipes.]
+
+============================================================
+ACT III — THE JUDGEMENT
+
+[Three thousand seven hundred and eighty-one tracks
+ receive a flag of some kind.]
+
+SIOUXSIE:
+♩ I appear in COMMENT2 four hundred and thirty-eight times.
+  "settled." It says "settled."
+  The Arabian Nights entry is... thorough. ♩
+
+[Siouxsie and the Banshees — Arabian Nights:
+ ⚑racism | ⚑rep:settled (Siouxsie Sioux) | ⚑song:Racist lyrics and Orientalist framing]
+
+VARG VIKERNES:
+♩ I appear across many tracks.
+  All say "convicted."
+  This is accurate. ♩
+
+[Burzum — Dunkelheit:
+ ⚑rep:convicted (Varg Vikernes)]
+
+[Agonoize — Death, Murder, Kill:
+ COMMENT:  A song about the act and aftermath of violent murder.
+ COMMENT2: ⚑extreme_violence]
+
+SKIPPY:
+♩ Sisters of Mercy: clean.
+  Joy Division: clean.
+  The floor is unencumbered.
+  Play freely. ♩
+
+============================================================
+ACT IV — THE VALIDATION
+
+[Both NMLs are written. Two backups created.
+ xmllint speaks.]
+
+XMLLINT:
+  Valid.
+  Valid.
+
+SKIPPY:
+♩ Sixteen thousand five hundred eighty-two summaries.
+  Three thousand seven hundred eighty-one flagged.
+  Two thousand five hundred ninety-one lyric flags.
+  One thousand four hundred thirty-eight reputation flags.
+  Ten individual song flags.
+  Both NMLs: valid.
+  The script: committed.
+  The floor: informed. ♩
+
+============================================================
+CAPTAIN'S WISDOM — SESSION 6
+
+"Let's even overwrite Comments. I don't care what's there already."
+  — On the liberation of unconditional writes.
+
+"Reputation flags, lyric flags — everything."
+  — The entire specification. Again. Two words or six.
+
+============================================================
+END OF SCENE 6
