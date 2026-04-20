@@ -1342,7 +1342,7 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
 .lyric-summary{font-size:11px;color:#a8adc8;margin-top:3px;white-space:normal;overflow-wrap:break-word;cursor:default}
 body.light .lyric-summary{color:#666}
 #lyr-tooltip{display:none;position:fixed;z-index:9999;pointer-events:none}
-#lyr-tooltip .tk{zoom:2;min-width:220px;max-width:260px;cursor:default!important;border-color:#444!important;background:#181818!important;margin-bottom:0!important}
+#lyr-tooltip .tk{zoom:2;min-width:220px;max-width:260px;cursor:default!important;border-color:#444!important;background:#181818!important;margin-bottom:0!important;box-shadow:0 8px 32px rgba(0,0,0,.8)}
 body.light #lyr-tooltip .tk{background:#e8e3dd!important;border-color:#aaa!important}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
 .tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
@@ -1720,24 +1720,32 @@ function tkHtml(t,idx,sel,showScore){
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
-// ── Card tooltip — 2× enlarged version of any .tk card ───────────────────
+// ── Card tooltip — 2× enlarged version of any card with data-track ───────
 const _tip=document.getElementById('lyr-tooltip');
 let _tipTimer=null;
-document.addEventListener('mouseover',e=>{
-  const el=e.target.closest('.tk[data-track]');
-  if(!el){clearTimeout(_tipTimer);_tipTimer=setTimeout(()=>{_tip.style.display='none';},80);return;}
+let _tipActive=null; // last element that triggered tooltip
+function _showTip(el,e){
+  if(_tipActive===el&&_tip.style.display==='block'){_positionTip(e);return;}
   clearTimeout(_tipTimer);
   let t;try{t=JSON.parse(el.dataset.track);}catch(ex){return;}
   _tip.innerHTML=tipCardHtml(t);
   _tip.style.display='block';
+  _tipActive=el;
   _positionTip(e);
+}
+document.addEventListener('mouseover',e=>{
+  const el=e.target.closest('[data-track]');
+  if(!el){clearTimeout(_tipTimer);_tipTimer=setTimeout(()=>{_tip.style.display='none';_tipActive=null;},120);return;}
+  _showTip(el,e);
 });
 document.addEventListener('mousemove',e=>{
-  if(e.target.closest('.tk[data-track]')) _positionTip(e);
+  const el=e.target.closest('[data-track]');
+  if(el) _showTip(el,e);
 });
 document.addEventListener('mouseout',e=>{
-  if(e.target.closest('.tk[data-track]')) return;
-  _tipTimer=setTimeout(()=>{ _tip.style.display='none'; },100);
+  const going=e.relatedTarget;
+  if(going&&going.closest&&going.closest('[data-track]'))return;
+  _tipTimer=setTimeout(()=>{_tip.style.display='none';_tipActive=null;},120);
 });
 function _positionTip(e){
   const pad=16, tw=_tip.offsetWidth, th=_tip.offsetHeight;
@@ -1770,7 +1778,8 @@ function dcCardHtml(deck){
        <div class="dc-meta">${t.bpm} BPM · ${t.key||'—'} · ${t.genre||'—'}</div>`
     : `<div class="dc-empty">Nothing loaded</div>`;
   const click=t?`onclick="setDeckAnchor('${deck}')"`:'' ;
-  return`<div class="${cls}" ${click}><div class="dc-label">${label}</div>${body}</div>`;
+  const trackData=t?`data-track="${esc(JSON.stringify(t))}"`:'' ;
+  return`<div class="${cls}" ${click} ${trackData}><div class="dc-label">${label}</div>${body}</div>`;
 }
 
 function renderDeckCards(){
@@ -1933,7 +1942,7 @@ async function loadAnchor(track,deck){
   const deckTag=deck?`<div class="deck-tag">DECK ${deck.toUpperCase()} ▶ NOW PLAYING</div>`:'';
   // Replace anchor box only; keep deck cards
   const cardsEl=b1.querySelector('.deck-cards');
-  const anchorHtml=`<div class="anchor-box">${deckTag}
+  const anchorHtml=`<div class="anchor-box" data-track="${esc(JSON.stringify(track))}">${deckTag}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
     ${meta(track,false)}</div>`;
   if(cardsEl){
