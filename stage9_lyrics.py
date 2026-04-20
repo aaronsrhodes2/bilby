@@ -175,6 +175,98 @@ def fetch_lyrics(artist: str, title: str) -> str | None:
     except (URLError, Exception):
         return None
 
+# ── LRCLIB ────────────────────────────────────────────────────────────────────
+
+LRCLIB_URL = "https://lrclib.net/api/get"
+
+def fetch_lyrics_lrclib(artist: str, title: str) -> tuple[str | None, bool]:
+    """
+    Fetch from lrclib.net. Returns (lyrics_text, is_instrumental).
+    lyrics_text is None if not found or instrumental.
+    """
+    params = f"artist_name={quote(artist)}&track_name={quote(title)}"
+    req = Request(
+        f"{LRCLIB_URL}?{params}",
+        headers={"User-Agent": "dj-planner/1.0", "Lrclib-Client": "dj-planner/1.0"},
+    )
+    try:
+        with urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        if data.get("instrumental"):
+            return None, True
+        lyrics = (data.get("plainLyrics") or "").strip()
+        return (lyrics if lyrics else None), False
+    except HTTPError as e:
+        if e.code == 404:
+            return None, False
+        if e.code == 429:
+            time.sleep(3)
+            return fetch_lyrics_lrclib(artist, title)
+        return None, False
+    except (URLError, Exception):
+        return None, False
+
+
+def run_fetch_lrclib(tracks: list[dict], limit: int = 0) -> None:
+    """Fetch from LRCLIB for tracks that lyrics.ovh missed."""
+    if not LYRICS_RAW.exists():
+        print("No lyrics_raw.json — run --fetch first.")
+        return
+
+    raw: dict = json.loads(LYRICS_RAW.read_text(encoding="utf-8"))
+
+    # Only target tracks lyrics.ovh returned null for (not yet found)
+    todo = [t for t in tracks
+            if raw.get(t["path"]) is None
+            and not is_instrumental(t["title"])]
+    if limit:
+        todo = todo[:limit]
+
+    print(f"LRCLIB fetch — lrclib.net")
+    print(f"  Gaps to fill:    {len(todo):,}")
+    if not todo:
+        print("  Nothing to do.")
+        return
+
+    FETCH_WORKERS = 16
+    found = not_found = instr_found = done_count = 0
+    start = time.time()
+    lock  = threading.Lock()
+
+    def fetch_one(track):
+        nonlocal found, not_found, instr_found, done_count
+        lyrics, is_instr = fetch_lyrics_lrclib(track["artist"], track["title"])
+        with lock:
+            if is_instr:
+                raw[track["path"]] = None   # confirmed instrumental
+                instr_found += 1
+            elif lyrics:
+                raw[track["path"]] = lyrics
+                found += 1
+            else:
+                not_found += 1
+            done_count += 1
+            if done_count % 100 == 0 or done_count == len(todo):
+                LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+                elapsed = time.time() - start
+                rate    = done_count / max(elapsed, 0.1)
+                remain  = (len(todo) - done_count) / rate / 60 if rate else 0
+                write_activity("Lyrics indexer", "lrclib", done_count, len(todo), start, rate)
+                print(f"  {done_count:,}/{len(todo):,} — filled {found:,}, "
+                      f"instr {instr_found:,}, still missing {not_found:,} — ~{remain:.0f} min left")
+
+    print(f"  Workers:         {FETCH_WORKERS}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=FETCH_WORKERS) as ex:
+        list(ex.map(fetch_one, todo))
+
+    LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    elapsed = time.time() - start
+    print(f"\nLRCLIB fetch complete in {elapsed/60:.1f} min")
+    print(f"  Newly filled:    {found:,}")
+    print(f"  Confirmed instr: {instr_found:,}")
+    print(f"  Still missing:   {not_found:,}")
+
+
 # ── Claude Haiku summarizer ───────────────────────────────────────────────────
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
@@ -557,9 +649,10 @@ def main() -> None:
         description="Stage 9 — Lyrics indexer",
         epilog="New tracks workflow: run --run once for the full library, then --watch to pick up additions automatically."
     )
-    parser.add_argument("--fetch",     action="store_true", help="Fetch lyrics from lyrics.ovh")
-    parser.add_argument("--summarize", action="store_true", help="Summarize fetched lyrics with Ollama")
-    parser.add_argument("--run",       action="store_true", help="Fetch + summarize (full pipeline)")
+    parser.add_argument("--fetch",        action="store_true", help="Fetch lyrics from lyrics.ovh")
+    parser.add_argument("--fetch-lrclib", action="store_true", help="Fill gaps from lrclib.net")
+    parser.add_argument("--summarize",    action="store_true", help="Summarize fetched lyrics with Ollama")
+    parser.add_argument("--run",          action="store_true", help="Fetch + summarize (full pipeline)")
     parser.add_argument("--report",    action="store_true", help="Show coverage statistics")
     parser.add_argument("--list",      action="store_true", help="Print deduplicated summary list")
     parser.add_argument("--list-out",  default="",          help="Save summary list to this JSON file")
@@ -567,7 +660,7 @@ def main() -> None:
     parser.add_argument("--limit",     type=int, default=0, help="Process at most N tracks (for testing)")
     args = parser.parse_args()
 
-    if not any([args.fetch, args.summarize, args.run, args.report, args.watch, args.list, args.list_out]):
+    if not any([args.fetch, args.fetch_lrclib, args.summarize, args.run, args.report, args.watch, args.list, args.list_out]):
         parser.print_help()
         sys.exit(0)
 
@@ -592,6 +685,10 @@ def main() -> None:
 
     if args.fetch or args.run:
         run_fetch(tracks, limit=args.limit)
+        print()
+
+    if args.fetch_lrclib:
+        run_fetch_lrclib(tracks, limit=args.limit)
         print()
 
     if args.summarize or args.run:
