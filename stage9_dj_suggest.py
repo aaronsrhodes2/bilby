@@ -1288,7 +1288,7 @@ body.light #show-modal{background:#ebe7e1;border-color:#c8c3bc}
 body.light .profile-btn{background:#e2ddd7;color:#444;border-color:#c8c3bc}
 body.light .genre-chk{color:#555}
 body.light .genre-chk:hover{background:#d8d3cc;color:#222}
-#rescue-box{background:#111;border:1px solid #333;border-radius:4px;padding:10px 14px;margin:8px 18px;display:none}
+#rescue-box{display:none!important}
 #rescue-box .r-label{font-size:9px;letter-spacing:2px;color:#666;margin-bottom:5px;text-transform:uppercase}
 #rescue-box .r-track{font-size:13px;cursor:pointer}
 #rescue-box .r-track .ra{color:#ccc}#rescue-box .r-track .rt{color:#fff;font-weight:bold}
@@ -1743,7 +1743,6 @@ async function rescueMe(mode){
     `<span class="ra">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="rt">${esc(t.title)}</span>`;
   document.getElementById('rescue-meta').innerHTML=
     `<span class="bpm">${t.bpm} BPM</span><span class="key">${t.key||'—'}</span><span class="gen">${t.genre||'—'}</span>${stars(t.stars)}<span class="scr">${t.score}%</span>`;
-  box.style.display='block';
   copyTrack(t.artist,t.title);
 }
 function rescueCopy(){
