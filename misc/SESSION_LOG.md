@@ -323,3 +323,34 @@ SKIPPY: Understood. Overwriting COMMENT unconditionally. COMMENT2 gets theme + l
 - corrected_traktor/collection.nml — COMMENT/COMMENT2 written (gitignored, not committed)
 
 ---
+
+## SESSION 7 — April 20, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Tool worked beautifully. 70% of song choices made with it, no friction. Summaries disappeared from song cards. Duplicates still showing for some songs (Siouxsie). Google Drive for transfer. GitLab vs GitHub?
+
+SKIPPY: Fixed three things: (1) summaries back in song cards — Track now reads COMMENT from NML directly, lyricLine tooltip replaced with larger styled CSS popup; (2) load_tracks now dedupes by artist+title keeping highest bitrate, 23,780→21,526 tracks; (3) dedup_corrected_music.py for actual file cleanup. Google Drive: rclone installed, needs Captain to run rclone config auth. GitLab: keep GitHub for this repo, GitLab MCP fine for Claude Desktop on new projects. Logged "PC as MCP server" as a future project.
+
+**Key decisions made:**
+- lyric_summary falls back to NML COMMENT field if lyrics_index cache is empty
+- Track pool deduped at load time by (artist, title) → highest bitrate wins
+- _song_key() moved above load_tracks() to resolve forward-reference
+- Google Drive via rclone (installed) — auth step requires Captain in terminal
+- Keep GitHub for music project; GitLab MCP is additive, not a migration
+
+**Notable moments:**
+- "The tool worked beautifully" — validation from the floor
+- Arabian Nights had 5+ copies at different bitrates from Stage 2 rename-on-collision
+- ALL 23,780 corrected NML entries show as "missing" — because path resolver has Unicode apostrophe mismatch (`'` vs `'`) in folder names like "NOW Yearbook Extra '81"
+- Captain's aside: "this is going to lead to my PC becoming a full on remote MCP for my mac and my phone" — logged as future project
+
+**Files modified:**
+- stage9_dj_suggest.py — comment field on Track, load_tracks dedup, lyricLine CSS tooltip
+- tools/dedup_corrected_music.py — new
+- tools/write_nml_comments.py — new (from session 6, committed here)
+- misc/FUTURE_TASKS.md — PC as MCP server task logged
+- misc/SESSION_LOG.md — this entry
+
+---
