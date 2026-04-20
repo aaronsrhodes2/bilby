@@ -83,7 +83,7 @@ STATE_FILE = BASE / "state" / "autocue_progress.json"
 #   8    │   7    │ Fade   │ 16 beats before end (fade-out marker)
 #
 SLOT_LOAD        = 0   # button 1  TYPE=3 (Load cue — deck snaps here on load)
-SLOT_FIRST_BEAT  = 1   # button 2  TYPE=0
+SLOT_FIRST_BEAT  = 1   # button 2  TYPE=1 (Fade-in — mixing entry point)
 SLOT_VOCAL       = 2   # button 3  TYPE=0
 SLOT_DROP        = 3   # button 4  TYPE=5 (stored loop)
 SLOT_OUTRO       = 7   # button 8  TYPE=2 (fade-out marker)
@@ -245,7 +245,7 @@ def compute_fast_cues(entry) -> dict[int, ET.Element] | None:
     cues[SLOT_LOAD]       = make_cue(SLOT_LOAD, first_beat_ms, "Load",
                                      type_=3, color="#FFFFFF")
     # Cue 2 — first beat (regular cue, quick-access duplicate)
-    cues[SLOT_FIRST_BEAT] = make_cue(SLOT_FIRST_BEAT, first_beat_ms, "First Beat")
+    cues[SLOT_FIRST_BEAT] = make_cue(SLOT_FIRST_BEAT, first_beat_ms, "Fade In", type_=1)
 
     # Cue 8 — 16 beats before end (TYPE=2 = fade-out marker)
     end_ms        = duration * 1000.0
@@ -342,7 +342,7 @@ def compute_audio_cues(audio_path: str, first_beat_ms: float | None,
                                 type_=3, color="#FFFFFF")
 
     # ── Cue 2 — first beat (grid-aligned, for BPM mixing) ────────────────────
-    cues[SLOT_FIRST_BEAT] = make_cue(SLOT_FIRST_BEAT, first_beat_ms, "First Beat")
+    cues[SLOT_FIRST_BEAT] = make_cue(SLOT_FIRST_BEAT, first_beat_ms, "Fade In", type_=1)
 
     # ── Cue 8 — 16 beats before end (fade-out marker) ────────────────────────
     end_ms        = dur_sec * 1000.0
@@ -510,9 +510,11 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
         # Check Load: HOTCUE=0 exists but may still be wrong TYPE
         load_el = next((c for c in entry.findall("CUE_V2")
                         if c.get("HOTCUE") == "0"), None)
+        fb_el   = next((c for c in entry.findall("CUE_V2")
+                        if c.get("HOTCUE") == str(SLOT_FIRST_BEAT)), None)
         need_load       = load_el is None or load_el.get("TYPE") != "3"
-        need_first_beat = str(SLOT_FIRST_BEAT) not in existing_hotcues
-        need_outro      = str(SLOT_OUTRO)      not in existing_hotcues
+        need_first_beat = fb_el   is None or fb_el.get("TYPE")   != "1"
+        need_outro      = str(SLOT_OUTRO) not in existing_hotcues
 
         if not any([need_load, need_first_beat, need_outro]):
             continue   # all three already set
@@ -574,6 +576,15 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
                     else:
                         idx = len(children)
                     entry.insert(idx, el)
+
+            # SLOT_FIRST_BEAT (HOTCUE=1): update in-place if already exists
+            if SLOT_FIRST_BEAT in new_cues:
+                existing_fb = next((c for c in entry.findall("CUE_V2")
+                                    if c.get("HOTCUE") == str(SLOT_FIRST_BEAT)), None)
+                if existing_fb is not None:
+                    existing_fb.set("TYPE", "1")
+                    existing_fb.set("NAME", "Fade In")
+                    new_cues.pop(SLOT_FIRST_BEAT)   # handled; remove from insert list
 
             # All other slots: insert as new CUE_V2 elements
             # Determine insertion point: after last existing CUE_V2
