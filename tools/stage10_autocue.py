@@ -503,10 +503,19 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
         if path in done:
             continue
 
-        # Skip if any user hotcues already set (slots 1-7, excluding 0=in-cue)
-        user_slots = existing_user_hotcues(entry)
-        if user_slots:
-            continue
+        # Determine which of our three fast slots are missing for this track.
+        # We now fill each slot independently — a track with some user cues can
+        # still be missing Cue 1 (Load), 2 (First Beat), or 8 (Fade-out).
+        existing_hotcues = {c.get("HOTCUE") for c in entry.findall("CUE_V2")}
+        # Check Load: HOTCUE=0 exists but may still be wrong TYPE
+        load_el = next((c for c in entry.findall("CUE_V2")
+                        if c.get("HOTCUE") == "0"), None)
+        need_load       = load_el is None or load_el.get("TYPE") != "3"
+        need_first_beat = str(SLOT_FIRST_BEAT) not in existing_hotcues
+        need_outro      = str(SLOT_OUTRO)      not in existing_hotcues
+
+        if not any([need_load, need_first_beat, need_outro]):
+            continue   # all three already set
 
         candidates += 1
         if limit and written >= limit:
@@ -514,7 +523,7 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
 
         # Compute cues
         if mode == "fast":
-            new_cues = compute_fast_cues(entry)
+            all_cues = compute_fast_cues(entry) or {}
         else:
             first_beat_ms, bpm = parse_grid(entry)
             duration            = get_duration(entry)
@@ -524,7 +533,15 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
                 audio_path = str(audio_root / rel)
             else:
                 audio_path = path
-            new_cues = compute_audio_cues(audio_path, first_beat_ms, bpm, duration)
+            all_cues = compute_audio_cues(audio_path, first_beat_ms, bpm, duration)
+
+        # Keep only the slots that are actually missing for this track
+        if all_cues is None:
+            all_cues = {}
+        new_cues = {}
+        if need_load       and SLOT_LOAD        in all_cues: new_cues[SLOT_LOAD]        = all_cues[SLOT_LOAD]
+        if need_first_beat and SLOT_FIRST_BEAT  in all_cues: new_cues[SLOT_FIRST_BEAT]  = all_cues[SLOT_FIRST_BEAT]
+        if need_outro      and SLOT_OUTRO       in all_cues: new_cues[SLOT_OUTRO]        = all_cues[SLOT_OUTRO]
 
         if not new_cues:
             skipped_nd += 1
