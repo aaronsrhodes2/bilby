@@ -48,8 +48,8 @@ NML_DEFAULT = (
     else BASE / "corrected_traktor" / "collection.nml"
 )
 PROGRESS    = BASE / "state" / "cue_reset_progress.json"
-MUSIC_ROOT  = Path("D:/Aaron/Music/VERAS SONGS")
-AUDIO_EXTS  = {".mp3", ".flac", ".aiff", ".m4a", ".wav", ".ogg"}
+CORRECTED_MUSIC = Path("D:/Aaron/Music/corrected_music")   # synced from Mac via Syncthing
+AUDIO_EXTS      = {".mp3", ".flac", ".aiff", ".m4a", ".wav", ".ogg"}
 
 # Librosa SR
 SR = 22050
@@ -226,6 +226,7 @@ def parse_nml_entries(nml_path: Path) -> list[dict]:
             "duration_ms":       duration_ms,
             "loc_artist_folder": nml_artist_folder(dir_str),
             "loc_filename":      filename,
+            "_loc_dir":          dir_str,
             "entry_index":       idx,
         })
 
@@ -253,55 +254,47 @@ def parse_filename_candidates(stem: str, dir_artist: str) -> list[tuple[str, str
     return candidates
 
 
+def _resolve_nml_path(e: dict) -> Path | None:
+    """
+    Build the local path from the NML LOCATION entry.
+    corrected_music on Mac maps to D:/Aaron/Music/corrected_music on PC.
+    Returns Path if the file exists locally, else None.
+    """
+    dir_str  = e.get("_loc_dir", "")
+    filename = e["loc_filename"]
+    if not dir_str or not filename:
+        return None
+
+    # Decode Traktor DIR: split on /: and rejoin
+    parts = [p for p in dir_str.split("/:") if p]
+    # Find corrected_music in the parts and take everything after it
+    try:
+        idx = next(i for i, p in enumerate(parts)
+                   if "corrected_music" in p.lower())
+        rel_parts = parts[idx + 1:]
+    except StopIteration:
+        return None
+
+    candidate = CORRECTED_MUSIC / Path(*rel_parts) / filename if rel_parts else CORRECTED_MUSIC / filename
+    if candidate.exists():
+        return candidate
+    return None
+
+
 def build_audio_index(nml_entries: list[dict]) -> dict[str, Path]:
     """
-    Walk MUSIC_ROOT, build {dkey: path}.
-    Also try matching via NML artist-folder + filename stem.
+    Build {dkey: path} using exact NML paths resolved into corrected_music.
+    corrected_music is synced from Mac via Syncthing (music-corrected folder).
+    Returns empty dict if corrected_music isn't synced yet.
     """
-    dkeys = {e["dkey"] for e in nml_entries}
-
-    # dkey → set of possible artist folders from NML
-    artist_folders: dict[str, str] = {
-        e["dkey"]: e["loc_artist_folder"].lower()
-        for e in nml_entries
-    }
+    if not CORRECTED_MUSIC.exists():
+        return {}
 
     index: dict[str, Path] = {}
-    for fpath in MUSIC_ROOT.rglob("*"):
-        if fpath.suffix.lower() not in AUDIO_EXTS:
-            continue
-        if fpath.name.startswith("._"):
-            continue
-
-        dir_artist = fpath.parent.parent.name
-
-        # Try dkey matching via filename parse
-        matched = False
-        for artist, title in parse_filename_candidates(fpath.stem, dir_artist):
-            dk = f"{artist.lower().strip()}\t{base_title(title)}"
-            if dk in dkeys and dk not in index:
-                index[dk] = fpath
-                matched = True
-                break
-
-        # Try matching via NML artist folder name vs local dir
-        if not matched:
-            local_artist_lower = dir_artist.lower()
-            for dk, af in artist_folders.items():
-                if dk in index:
-                    continue
-                if af and (af in local_artist_lower or local_artist_lower in af):
-                    # Check filename stem similarity
-                    nml_entry = next(e for e in nml_entries if e["dkey"] == dk)
-                    nml_stem = Path(nml_entry["loc_filename"]).stem.lower()
-                    local_stem = re.sub(r"^\d+[-\s]\d+\s*[-.]?\s*", "", fpath.stem)
-                    local_stem = re.sub(r"^\d+\s*[-.]?\s*", "", local_stem).lower()
-                    # Simple: check if NML stem contains local stem or vice versa
-                    if nml_stem and local_stem and (
-                        nml_stem in local_stem or local_stem in nml_stem
-                    ):
-                        index[dk] = fpath
-                        break
+    for e in nml_entries:
+        p = _resolve_nml_path(e)
+        if p and e["dkey"] not in index:
+            index[e["dkey"]] = p
 
     return index
 
