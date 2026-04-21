@@ -1315,8 +1315,9 @@ body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible',
 #hdr{background:var(--hdr-bg);padding:10px 18px;border-bottom:2px solid var(--hdr-bdr);display:flex;align-items:center;gap:16px;flex-shrink:0}
 #hdr h1{color:var(--hdr-text);font-family:var(--lbl-font);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
 #hdr small{color:var(--hdr-sub);font-size:11px}
-#theme-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 10px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:12px;cursor:pointer;letter-spacing:1px;flex-shrink:0;transition:all .15s;text-transform:uppercase}
-#theme-btn:hover{border-color:var(--text2);color:var(--text)}
+#theme-btn,#art-reload-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 10px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:12px;cursor:pointer;letter-spacing:1px;flex-shrink:0;transition:all .15s;text-transform:uppercase}
+#theme-btn:hover,#art-reload-btn:hover{border-color:var(--text2);color:var(--text)}
+#art-reload-btn{font-size:14px;padding:3px 7px}
 #osc-status{font-size:10px;padding:3px 9px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
 #osc-status.on{background:#14532d;color:#4ade80}
 #osc-status.off{background:#1e293b;color:#555}
@@ -1450,8 +1451,8 @@ body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!i
 body.lcars #hdr{background:var(--col1);border-bottom:none;padding:0;min-height:40px}
 body.lcars #hdr h1{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:6px;padding:0 20px;color:#000}
 body.lcars #hdr small{font-family:'Oswald',sans-serif;padding-right:12px}
-body.lcars #theme-btn{font-family:'Oswald',sans-serif;font-weight:700;background:#CC7700;color:#000;border:none;padding:0 16px;align-self:stretch;border-radius:0}
-body.lcars #theme-btn:hover{background:#FFAA00}
+body.lcars #theme-btn,body.lcars #art-reload-btn{font-family:'Oswald',sans-serif;font-weight:700;background:#CC7700;color:#000;border:none;padding:0 16px;align-self:stretch;border-radius:0}
+body.lcars #theme-btn:hover,body.lcars #art-reload-btn:hover{background:#FFAA00}
 body.lcars #osc-status{font-family:'Oswald',sans-serif;border-radius:0;padding:0 14px;align-self:stretch;display:flex;align-items:center}
 body.lcars #osc-status.on{background:#004400;color:#00FF66}
 body.lcars #osc-status.off{background:#330000;color:#FF3300}
@@ -1489,6 +1490,7 @@ body.borg .dc.dc-playing{box-shadow:0 0 8px var(--dc-play-glow)}
   <small id="tc">loading…</small>
   <span id="osc-status" class="off">OSC OFF</span>
   <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg">🌙</button>
+  <button id="art-reload-btn" onclick="reloadArt()" title="Reload album art index (after Syncthing sync)">🖼</button>
 </div>
 <div id="deck-bar">
   <span class="deck-pill" id="pill-a">DECK A</span>
@@ -1562,9 +1564,14 @@ let deckPlaying={a:false,b:false};
 const THEMES=['night','day','lcars','borg'];
 const THEME_ICONS={night:'🌙',day:'☀',lcars:'🖖',borg:'👾'};
 (function(){
-  const saved=localStorage.getItem('theme')||'night';
+  // Migrate old 2-theme values ('light'/'dark') to new 4-theme names
+  let saved=localStorage.getItem('theme')||'night';
+  if(saved==='light')saved='day';
+  if(saved==='dark' )saved='night';
+  if(!THEMES.includes(saved))saved='night';
+  localStorage.setItem('theme',saved);
   if(saved!=='night')document.body.classList.add(saved);
-  document.getElementById('theme-btn').textContent=THEME_ICONS[saved]||'🌙';
+  document.getElementById('theme-btn').textContent=THEME_ICONS[saved];
 })();
 function toggleTheme(){
   const cur=THEMES.find(t=>document.body.classList.contains(t))||'night';
@@ -1573,6 +1580,14 @@ function toggleTheme(){
   if(nxt!=='night')document.body.classList.add(nxt);
   document.getElementById('theme-btn').textContent=THEME_ICONS[nxt];
   localStorage.setItem('theme',nxt);
+}
+function reloadArt(){
+  const btn=document.getElementById('art-reload-btn');
+  btn.textContent='⏳';
+  fetch('/api/reload-art',{method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{btn.textContent='🖼';console.log('Art index reloaded:',d.count,'entries');})
+    .catch(()=>{btn.textContent='🖼';});
 }
 
 // ── Show Genre Config ─────────────────────────────────────────────────────────
