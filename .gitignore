@@ -5,6 +5,8 @@ state/*
 !state/lyrics_dedup.json
 !state/lyrics_summary.json
 !state/drive_known.json
+!state/album_art_index.json
+state/album_art/
 corrected_music/
 corrected_traktor/.stfolder/
 corrected_traktor/*.nml.pre-*

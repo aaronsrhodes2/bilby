@@ -51,6 +51,8 @@ TRAKTOR_NML     = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/coll
 SUGGESTIONS_DIR = BASE / "suggestions"
 REP_FLAGS_FILE  = BASE / "misc" / "reputation_flags.json"
 LYRICS_INDEX    = BASE / "state" / "lyrics_index.json"
+ART_INDEX_PATH  = BASE / "state" / "album_art_index.json"
+ART_DIR         = BASE / "state" / "album_art"
 ACTIVITY_FILE   = BASE / "state" / "activity.json"
 PORT            = 7334
 OSC_PORT        = 9000
@@ -70,6 +72,7 @@ class Track:
     stars:    int
     duration: float = 0.0   # seconds, from NML PLAYTIME
     comment:  str   = ""    # NML INFO COMMENT — lyric summary written by write_nml_comments.py
+    art_url:  str   = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
 
     @property
     def search_text(self) -> str:
@@ -95,6 +98,7 @@ class Track:
             "lyric_summary":lyr["summary"]  if lyr else (self.comment or None),
             "lyric_theme":  lyr["theme"]    if lyr else None,
             "lyric_flags":  lyr["flags"]    if lyr else [],
+            "art_url":      self.art_url or "",
         }
 
 
@@ -166,6 +170,19 @@ def lyrics_for(path: str) -> dict | None:
     return entry
 
 
+# ── Album art index ───────────────────────────────────────────────────────────
+
+def _load_art_index(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+ART_INDEX: dict[str, str] = _load_art_index(ART_INDEX_PATH)  # dkey → "/art/{hash}.jpg" | null
+
+
 # ── Song key (used for dedup everywhere) ─────────────────────────────────────
 
 def _song_key(t: Track) -> str:
@@ -205,6 +222,8 @@ def load_tracks(nml_path: Path) -> list[Track]:
             duration = float(info.get("PLAYTIME", 0) or 0)
         except (ValueError, TypeError):
             duration = 0.0
+        dk      = f"{artist.lower().strip()}\t{title.lower().strip()}"
+        art_url = ART_INDEX.get(dk) or ""
         raw.append((bitrate, Track(
             path     = path,
             artist   = artist,
@@ -215,6 +234,7 @@ def load_tracks(nml_path: Path) -> list[Track]:
             stars    = RANKING_TO_STARS.get(ranking, 0),
             duration = duration,
             comment  = info.get("COMMENT", "") or "",
+            art_url  = art_url,
         )))
 
     # Deduplicate by artist+title: keep highest-bitrate version.
@@ -1378,6 +1398,11 @@ body.light #lyr-tooltip .tk{background:#e8e3dd!important;border-color:#aaa!impor
 #activity-bar .act-bar-wrap{width:160px;background:#1a1a1a;border-radius:2px;height:4px;overflow:hidden;flex-shrink:0}
 #activity-bar .act-fill{background:#4cc9f0;height:100%;border-radius:2px;transition:width .4s}
 #activity-bar .act-info{color:#555;white-space:nowrap;font-size:10px}
+/* ── Album art ── */
+.tk{position:relative}
+.art-thumb{position:absolute;top:6px;right:6px;width:36px;height:36px;border-radius:3px;object-fit:cover;opacity:0.82;flex-shrink:0}
+.tip-art{width:56px;height:56px;border-radius:4px;object-fit:cover;float:right;margin:0 0 6px 10px;flex-shrink:0}
+body.light .art-thumb{opacity:0.9}
 </style>
 </head>
 <body>
@@ -1705,7 +1730,8 @@ function tipCardHtml(t){
   const lyrHtml=t.lyric_summary
     ?`<div class="lyric-summary" style="white-space:normal;overflow-wrap:break-word">♪ ${esc(t.lyric_summary)}</div>`
     :'';
-  return`<div class="tk"><div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>${lyrHtml}${meta(t,true)}</div>`;
+  const artHtml=t.art_url?`<img class="tip-art" src="${t.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  return`<div class="tk">${artHtml}<div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>${lyrHtml}${meta(t,true)}</div>`;
 }
 function meta(t,showScore){
   return`<div class="meta">
@@ -1714,8 +1740,9 @@ function meta(t,showScore){
     ${showScore?`<span class="scr">${t.score}%</span>`:''}${txBadge(t)}</div>`;
 }
 function tkHtml(t,idx,sel,showScore){
+  const artHtml=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:'';
   return`<div class="tk${sel?' sel':''}" id="s2-${idx}" data-track="${esc(JSON.stringify(t))}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-    <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+    ${artHtml}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
     ${lyricLine(t)}${meta(t,showScore)}</div>`;
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -1981,9 +2008,10 @@ function renderSlot3(groups){
   if(!groups.length){b3.innerHTML='<div class="empty">No bridge candidates</div>';return}
   b3.innerHTML=groups.map(g=>`
     <div class="bg"><div class="bg-dest">→ ${esc(g.destination)}</div>
-    ${g.tracks.map(t=>`<div class="tk" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-      <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
-      ${lyricLine(t)}${meta(t,true)}</div>`).join('')}</div>`).join('');
+    ${g.tracks.map(t=>{const a=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:''
+      return`<div class="tk" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+      ${a}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+      ${lyricLine(t)}${meta(t,true)}</div>`}).join('')}</div>`).join('');
 }
 </script>
 </body>
@@ -2050,7 +2078,7 @@ setInterval(load,15000);
 
 
 def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
-    from flask import Flask, Response, jsonify, request, stream_with_context
+    from flask import Flask, Response, jsonify, request, stream_with_context, send_from_directory
 
     app   = Flask(__name__)
     index = {t.path: t for t in tracks}
@@ -2198,6 +2226,19 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
             if score > best_score:
                 best_score, best = score, t
         return jsonify(best.to_dict() if best else None)
+
+    @app.route("/art/<filename>")
+    def serve_art(filename):
+        """Serve cached album art JPEG files."""
+        return send_from_directory(ART_DIR, filename)
+
+    @app.route("/api/reload-art", methods=["POST"])
+    def reload_art():
+        """Hot-reload art index without server restart (call while fetch_album_art.py runs)."""
+        global ART_INDEX
+        ART_INDEX = _load_art_index(ART_INDEX_PATH)
+        found = sum(1 for v in ART_INDEX.values() if v)
+        return jsonify({"ok": True, "total": len(ART_INDEX), "found": found})
 
     @app.route("/api/reload-lyrics", methods=["POST"])
     def reload_lyrics():
