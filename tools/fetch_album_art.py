@@ -74,15 +74,30 @@ def save_json(p: Path, obj):
 
 # ── Build track list from NML ──────────────────────────────────────────────────
 
-def load_tracks() -> list[dict]:
-    """Return list of unique {artist, title, path, dkey} from NML."""
+def akey(artist: str, album: str) -> str | None:
+    """Album-level cache key. None if no album info."""
+    a = (artist or "").lower().strip()
+    b = (album  or "").lower().strip()
+    if not a or not b:
+        return None
+    return f"{a}\t{b}"
+
+def load_tracks() -> tuple[list[dict], dict[str, list[str]]]:
+    """
+    Return (tracks, album_map) where:
+      tracks     = list of unique {artist, title, album, path, dkey}
+      album_map  = {akey: [dkey, ...]} — all dkeys sharing an album
+    """
     tree = ET.parse(NML_PATH)
     coll = tree.getroot().find("COLLECTION")
     seen: set[str] = set()
     tracks = []
+    album_map: dict[str, list[str]] = {}
     for e in coll.findall("ENTRY"):
         artist = e.get("ARTIST", "").strip()
         title  = e.get("TITLE",  "").strip()
+        alb_el = e.find("ALBUM")
+        album  = (alb_el.get("TITLE", "") if alb_el is not None else "").strip()
         if not artist and not title:
             continue
         dk = dkey(artist, title)
@@ -95,8 +110,12 @@ def load_tracks() -> list[dict]:
             path = traktor_to_abs(
                 loc.get("VOLUME", ""), loc.get("DIR", ""), loc.get("FILE", "")
             )
-        tracks.append({"artist": artist, "title": title, "path": path, "dkey": dk})
-    return tracks
+        tracks.append({"artist": artist, "title": title, "album": album,
+                        "path": path, "dkey": dk})
+        ak = akey(artist, album)
+        if ak:
+            album_map.setdefault(ak, []).append(dk)
+    return tracks, album_map
 
 # ── Spotify ────────────────────────────────────────────────────────────────────
 
@@ -319,17 +338,39 @@ def save_art(dk: str, data: bytes) -> str:
 
 # ── Report ────────────────────────────────────────────────────────────────────
 
+def propagate_album_art(index: dict, album_map: dict[str, list[str]]) -> int:
+    """
+    For every album where at least one track has art, copy that URL to all
+    sibling tracks that don't have an entry yet. Returns number of tracks filled.
+    """
+    filled = 0
+    for ak, dkeys in album_map.items():
+        # Find a known-good URL for this album
+        url = next((index[dk] for dk in dkeys if index.get(dk)), None)
+        if not url:
+            continue
+        for dk in dkeys:
+            if dk not in index:
+                index[dk] = url
+                filled += 1
+    return filled
+
 def report():
-    tracks = load_tracks()
+    tracks, album_map = load_tracks()
     index  = load_json(INDEX_JSON, {})
     total      = len(tracks)
     found      = sum(1 for dk in (t["dkey"] for t in tracks) if index.get(dk) not in (None, ""))
     not_found  = sum(1 for dk in (t["dkey"] for t in tracks) if dk in index and index[dk] is None)
     unprocessed = total - found - not_found
+    # How many could be filled by album propagation right now
+    sim = dict(index)
+    propagatable = propagate_album_art(sim, album_map)
     print(f"Unique tracks:     {total:,}")
     print(f"Art found:         {found:,}  ({found*100//total if total else 0}%)")
     print(f"Not found (null):  {not_found:,}")
     print(f"Not yet tried:     {unprocessed:,}")
+    if propagatable:
+        print(f"Propagatable now:  {propagatable:,}  (album siblings with known art)")
     # Count files on disk
     if ART_DIR.exists():
         files = list(ART_DIR.glob("*.jpg"))
@@ -340,7 +381,7 @@ def report():
 
 def run(limit: int = 0, force: bool = False):
     ART_DIR.mkdir(parents=True, exist_ok=True)
-    tracks = load_tracks()
+    tracks, album_map = load_tracks()
     index  = load_json(INDEX_JSON, {})
 
     spotify = load_spotify_creds()
@@ -353,13 +394,20 @@ def run(limit: int = 0, force: bool = False):
             print(f"  Spotify: token failed — {ex}")
             spotify = None
 
+    # ── Album propagation pass ─────────────────────────────────────────────
+    # Any track whose album-sibling already has art gets it for free
+    propagated = propagate_album_art(index, album_map)
+    if propagated:
+        save_json(INDEX_JSON, index)
+        print(f"  Album propagation: {propagated:,} tracks filled from siblings")
+
     # Build todo list
     todo = []
     for t in tracks:
         dk = t["dkey"]
         if dk in index:
             if index[dk] is not None:
-                continue   # already fetched
+                continue   # already fetched or propagated
             if not force:
                 continue   # null — skip unless --force
         todo.append(t)
@@ -372,14 +420,23 @@ def run(limit: int = 0, force: bool = False):
         print("Nothing to do.")
         return
 
-    done = fetched = itunes_fetched = mb_fetched = embedded = not_found = 0
+    done = fetched = itunes_fetched = mb_fetched = embedded = not_found = propagated_inline = 0
 
     for i, track in enumerate(todo):
         artist = track["artist"]
         title  = track["title"]
+        album  = track["album"]
         path   = track["path"]
         dk     = track["dkey"]
         art_url = None
+
+        # ── Check album siblings first (may have been filled since loop start) ─
+        ak = akey(artist, album)
+        if ak and ak in album_map:
+            art_url = next((index[sib] for sib in album_map[ak]
+                            if index.get(sib)), None)
+            if art_url:
+                propagated_inline += 1
 
         print(f"[{i+1}/{len(todo)}] {artist} — {title}")
 
@@ -436,6 +493,12 @@ def run(limit: int = 0, force: bool = False):
             except Exception as ex:
                 print(f"  mutagen error: {ex}")
 
+        # ── Propagate to album siblings ───────────────────────────────────────
+        if art_url and ak and ak in album_map:
+            for sib in album_map[ak]:
+                if not index.get(sib):
+                    index[sib] = art_url
+
         # ── Record result ─────────────────────────────────────────────────────
         if art_url:
             index[dk] = art_url
@@ -454,7 +517,7 @@ def run(limit: int = 0, force: bool = False):
     save_json(INDEX_JSON, index)
     print(f"\nDone. {done} processed — "
           f"{fetched} Spotify  {itunes_fetched} iTunes  {mb_fetched} MusicBrainz  "
-          f"{embedded} embedded  {not_found} not found")
+          f"{embedded} embedded  {propagated_inline} album-propagated  {not_found} not found")
 
 # ── Embed art into audio files (so Traktor sees it) ──────────────────────────
 
@@ -518,7 +581,7 @@ def embed(limit: int = 0, overwrite: bool = False):
     Skips files that already have embedded art (unless --overwrite).
     Only embeds tracks that have a confirmed art URL in the index.
     """
-    tracks = load_tracks()
+    tracks, _ = load_tracks()
     index  = load_json(INDEX_JSON, {})
 
     todo = []
