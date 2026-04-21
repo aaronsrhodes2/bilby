@@ -399,3 +399,40 @@ SKIPPY: Completed: removed Reset Show from deck-bar, moved it into the setlist m
 - `.gitignore` — album_art_index.json exception
 
 ---
+
+## SESSION 9 — April 21, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: I don't see the art in the application's song cards.
+
+SKIPPY: Server was running stale code from before the pipeline finished. Restarted it. Keys matched, art served fine. Also found the anchor box and deck status cards had no art at all — separate HTML templates that never got the art treatment. Fixed all three spots: anchor box (56×56 float right), deck pills (32×32), candidate cards already had it.
+
+CAPTAIN: Anything left on the list?
+
+SKIPPY: Mac-side code backlog clear. Housekeeping remaining: memory, session log, operatic play. PC still has STT and cue pass.
+
+CAPTAIN: Proceed.
+
+SKIPPY: Updated project_current_state.md (was listing album art as "Next Planned Feature" — it's now done at 98%). Session log and scene written.
+
+**Key decisions made:**
+- Album art belongs in anchor box, deck pills, candidate cards, AND tooltip — not just the candidate list
+- Memory file was ~1 session stale; consolidated with full current state
+- Mac backlog is genuinely empty; next meaningful work is PC-side or new features
+
+**Notable moments:**
+- Art was working fine API-side on first check — just needed a browser hard refresh
+- `lstrip("/art/")` bug in embed mode — strips character set {/,a,r,t} not the prefix; fixed to `removeprefix`
+- Album propagation: 1,885 tracks got art instantly at startup, no API calls needed
+- ALBUM field in NML is a child element `<ALBUM TITLE="..."/>`, not an ENTRY attribute — classic Traktor quirk
+
+**Files modified:**
+- `stage9_dj_suggest.py` — art in anchor box + deck pills; theme localStorage migration; 🖼 reload button
+- `tools/fetch_album_art.py` — iTunes source, album propagation, lstrip fix
+- `tools/art_pipeline.sh` — automated pipeline
+- `state/album_art_index.json` — 21,189 entries (98% coverage)
+- `memory/project_current_state.md` — full rewrite to current state
+
+---
