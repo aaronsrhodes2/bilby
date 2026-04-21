@@ -545,10 +545,12 @@ _PLAYED_PATHS:   set[str]  = set()
 _PLAYED_ARTISTS: set[str]  = set()   # normalised lower-strip artist names
 _SETLIST:        list[dict] = []      # ordered played tracks {artist,title,genre,bpm,played_at}
 
-# How long a track must stay in a deck (beyond the other deck's song length)
-# before we consider it "played".  2 min gives time to preview without false-positives.
-PLAYED_GUARD_SECS  = 120   # added on top of other deck's duration
-SOLO_PLAYED_SECS   = 90    # threshold when no other-deck duration is available
+# A track is "played" when it has been the SOLE file open in Traktor for at
+# least this many seconds after the other deck's file closed.  140s ≈ 2:20 —
+# shorter than any track in the collection, longer than any intro preview/loop.
+# Previously we used (other_duration + 120) which was backwards and missed
+# most tracks.  This simpler rule is both more accurate and easier to reason about.
+SOLO_PLAYED_SECS = 140   # seconds a deck must be "solo" before it counts as played
 
 FLOOR_GENRES = {
     "EBM", "Industrial", "Gothic Rock", "Darkwave", "Post-Punk",
@@ -924,16 +926,19 @@ def start_lsof_watcher(
 
     Played detection (time-based):
       When a file leaves a deck, check how long it was open.
-      If it stayed longer than (other deck's track duration + PLAYED_GUARD_SECS),
-      it was almost certainly played — not just previewed and swapped.
+      Once the other deck's file closes, a solo timer starts. If the remaining
+      deck's file stays open for SOLO_PLAYED_SECS, it was definitely played.
       Confirmed-played tracks land in _SETLIST for the post-show export.
     """
     # path → deck letter
-    deck_map:   dict[str, str]           = {}
+    deck_map:       dict[str, str]   = {}
     # path → time.time() when first seen by lsof
-    load_times: dict[str, float]         = {}
-    # deck → Track currently in that deck (for duration lookup)
-    deck_track: dict[str, object]        = {}   # Track objects
+    load_times:     dict[str, float] = {}
+    # deck → Track currently in that deck
+    deck_track:     dict[str, object] = {}
+    # deck → timestamp when it became the SOLE active deck (other deck closed its file)
+    # Once (now - solo_since) >= SOLO_PLAYED_SECS, the deck's track counts as played.
+    deck_solo_since: dict[str, float] = {}
 
     def _resolve(fpath: str):
         track = index.get(fpath)
@@ -942,23 +947,20 @@ def start_lsof_watcher(
             track = next((t for t in tracks if Path(t.path).name == bn), None)
         return track
 
-    def _check_played(fpath: str, deck: str) -> None:
-        """Decide whether a departing track was actually played."""
-        load_time = load_times.pop(fpath, None)
-        if load_time is None:
-            return
-        time_open = time.time() - load_time
-        # Get the other deck's current track to estimate how long the set was running
+    def _on_file_left(fpath: str, deck: str) -> None:
+        """Called when a file disappears from a deck.
+
+        If the other deck still has a file open, start its solo timer now.
+        That means: once SOLO_PLAYED_SECS pass with that file still open,
+        the track was definitely played (not just previewed).
+        """
+        load_times.pop(fpath, None)
         other_deck = "b" if deck == "a" else "a"
-        other      = deck_track.get(other_deck)
-        if other and getattr(other, "duration", 0) > 30:
-            threshold = other.duration + PLAYED_GUARD_SECS
-        else:
-            threshold = SOLO_PLAYED_SECS
-        if time_open >= threshold:
-            track = _resolve(fpath)
-            if track:
-                _mark_played_track(track)
+        # Check if the other deck has a file currently open
+        other_path = next((p for p, d in deck_map.items() if d == other_deck), None)
+        if other_path and other_path not in deck_solo_since:
+            deck_solo_since[other_deck] = time.time()
+            print(f"  [lsof] Deck {deck.upper()} released — solo timer started for Deck {other_deck.upper()}")
 
     def _loop():
         nonlocal deck_map
@@ -993,11 +995,22 @@ def start_lsof_watcher(
             new_files     = current_paths - prev_paths
             gone_files    = prev_paths    - current_paths
 
-            # Check departing files for played detection BEFORE updating deck_map
+            # Check departing files — start solo timers for surviving deck
             for fpath in gone_files:
                 deck = deck_map.get(fpath)
                 if deck:
-                    _check_played(fpath, deck)
+                    _on_file_left(fpath, deck)
+
+            # Check solo timers — mark played if threshold reached
+            now = time.time()
+            for deck, solo_start in list(deck_solo_since.items()):
+                if (now - solo_start) >= SOLO_PLAYED_SECS:
+                    solo_path = next((p for p, d in deck_map.items() if d == deck), None)
+                    if solo_path and solo_path in current_paths:
+                        track = _resolve(solo_path)
+                        if track:
+                            _mark_played_track(track)
+                    deck_solo_since.pop(deck, None)
 
             if not new_files and not gone_files:
                 continue
