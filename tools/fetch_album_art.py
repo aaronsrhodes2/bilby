@@ -4,8 +4,9 @@ fetch_album_art.py — Batch album art fetcher for DJ collection
 
 Sources (in order):
   1. Spotify API (client-credentials, no user login required)
-  2. MusicBrainz Cover Art Archive
-  3. mutagen (embedded art in the local audio file)
+  2. iTunes Search API (free, no auth, good for indie/electronic)
+  3. MusicBrainz Cover Art Archive
+  4. mutagen (embedded art in the local audio file)
 
 Saves JPEGs to state/album_art/{md5_of_dkey}.jpg
 Index:  state/album_art_index.json  →  {dkey: "/art/{filename}.jpg" | null}
@@ -42,6 +43,7 @@ from lib.nml_parser import traktor_to_abs
 
 SAVE_EVERY    = 100
 SPOTIFY_DELAY = 0.12   # seconds between Spotify calls (~8 req/s, limit is 180/30s)
+ITUNES_DELAY  = 0.25   # iTunes is generous but let's be polite
 MB_DELAY      = 1.1    # MusicBrainz politely requires ≥1s between requests
 
 # ── Key helpers ────────────────────────────────────────────────────────────────
@@ -212,6 +214,46 @@ def mb_search_art_url(artist: str, title: str) -> str | None:
         pass
     return None
 
+# ── iTunes Search API ────────────────────────────────────────────────────────
+
+def itunes_search_art_url(artist: str, title: str) -> str | None:
+    """Search iTunes for album art. Returns a ~600px image URL or None."""
+    clean = _clean_title(title)
+    # iTunes returns artworkUrl100; swap to 600x600
+    for term in [f"{artist} {clean}", clean]:
+        params = urllib.parse.urlencode({
+            "term":   term,
+            "entity": "song",
+            "limit":  5,
+            "media":  "music",
+        })
+        try:
+            req = urllib.request.Request(
+                f"https://itunes.apple.com/search?{params}",
+                headers={"User-Agent": "DJBlockPlanner/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                body = json.loads(r.read())
+            results = body.get("results", [])
+            # Try to match artist name loosely
+            for item in results:
+                item_artist = item.get("artistName", "").lower()
+                art_url     = item.get("artworkUrl100", "")
+                if not art_url:
+                    continue
+                if artist.lower() in item_artist or item_artist in artist.lower():
+                    # Upscale from 100px to 600px thumbnail
+                    return art_url.replace("100x100bb", "600x600bb")
+            # If no artist match but results exist, take first
+            if results:
+                art_url = results[0].get("artworkUrl100", "")
+                if art_url:
+                    return art_url.replace("100x100bb", "600x600bb")
+        except Exception:
+            pass
+        time.sleep(ITUNES_DELAY)
+    return None
+
 # ── mutagen embedded art ──────────────────────────────────────────────────────
 
 def extract_embedded_art(path: str) -> bytes | None:
@@ -330,7 +372,7 @@ def run(limit: int = 0, force: bool = False):
         print("Nothing to do.")
         return
 
-    done = fetched = mb_fetched = embedded = not_found = 0
+    done = fetched = itunes_fetched = mb_fetched = embedded = not_found = 0
 
     for i, track in enumerate(todo):
         artist = track["artist"]
@@ -355,7 +397,21 @@ def run(limit: int = 0, force: bool = False):
                 print(f"  Spotify error: {ex}")
             time.sleep(SPOTIFY_DELAY)
 
-        # ── Source 2: MusicBrainz CAA ─────────────────────────────────────────
+        # ── Source 2: iTunes Search API ───────────────────────────────────────
+        if not art_url:
+            try:
+                it_url = itunes_search_art_url(artist, title)
+                if it_url:
+                    data = download_image(it_url)
+                    if data:
+                        art_url = save_art(dk, data)
+                        itunes_fetched += 1
+                        print(f"  ✓ iTunes  ({len(data)//1024}KB)")
+            except Exception as ex:
+                print(f"  iTunes error: {ex}")
+            time.sleep(ITUNES_DELAY)
+
+        # ── Source 3: MusicBrainz CAA ─────────────────────────────────────────
         if not art_url:
             try:
                 mb_url = mb_search_art_url(artist, title)
@@ -369,7 +425,7 @@ def run(limit: int = 0, force: bool = False):
                 print(f"  MusicBrainz error: {ex}")
             time.sleep(MB_DELAY)
 
-        # ── Source 3: Embedded art via mutagen ────────────────────────────────
+        # ── Source 4: Embedded art via mutagen ────────────────────────────────
         if not art_url:
             try:
                 data = extract_embedded_art(path)
@@ -392,12 +448,13 @@ def run(limit: int = 0, force: bool = False):
 
         if done % SAVE_EVERY == 0:
             save_json(INDEX_JSON, index)
-            print(f"  [saved — {done} done, {fetched}S/{mb_fetched}MB/{embedded}E/{not_found}✗]")
+            print(f"  [saved — {done} done, {fetched}S/{itunes_fetched}IT/{mb_fetched}MB/{embedded}E/{not_found}✗]")
 
     # Final save
     save_json(INDEX_JSON, index)
     print(f"\nDone. {done} processed — "
-          f"{fetched} Spotify  {mb_fetched} MusicBrainz  {embedded} embedded  {not_found} not found")
+          f"{fetched} Spotify  {itunes_fetched} iTunes  {mb_fetched} MusicBrainz  "
+          f"{embedded} embedded  {not_found} not found")
 
 # ── Embed art into audio files (so Traktor sees it) ──────────────────────────
 
@@ -487,7 +544,7 @@ def embed(limit: int = 0, overwrite: bool = False):
     for i, track in enumerate(todo):
         dk       = track["dkey"]
         art_url  = index.get(dk)
-        fname    = art_url.lstrip("/art/") if art_url else ""
+        fname    = art_url.removeprefix("/art/") if art_url else ""
         jpg_path = ART_DIR / fname
         if not jpg_path.exists():
             errors += 1
