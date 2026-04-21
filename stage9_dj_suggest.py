@@ -1206,7 +1206,7 @@ HTML = r"""<!DOCTYPE html>
   --text:#ddd;--text2:#888;--text3:#555;--text4:#444;
   --accent:#e63946;--col1:#e63946;--col2:#f4a261;--col3:#4cc9f0;
   --card-bg:#161616;--card-sel:#1a1a2e;
-  --meta:#666;--lyric:#4a5568;
+  --meta:#666;--lyric:#9aa5b8;
   --bpm:#f4a261;--key:#a8dadc;--gen:#aaa;--scr:#4a9;
   --anchor-bg:#1a0808;--anchor-bdr:#e63946;--anchor-col:#e63946;
   --dc-play-bdr:#e63946;--dc-play-bg:#1a0808;--dc-play-glow:#e6394633;
@@ -1240,7 +1240,7 @@ body.day{
   --text:#1a1a1a;--text2:#444;--text3:#666;--text4:#888;
   --accent:#CC7700;--col1:#CC7700;--col2:#BB9900;--col3:#6677AA;
   --card-bg:#ebe7e1;--card-sel:#fff0cc;
-  --meta:#555;--lyric:#6b7280;
+  --meta:#555;--lyric:#4a5568;
   --bpm:#b85a00;--key:#1a6080;--gen:#555;--scr:#2a7a3a;
   --anchor-bg:#fff5e0;--anchor-bdr:#CC7700;--anchor-col:#CC7700;
   --dc-play-bdr:#CC7700;--dc-play-bg:#fff5e0;--dc-play-glow:#CC770033;
@@ -1265,7 +1265,7 @@ body.lcars{
   --text:#FFCC99;--text2:#AA8855;--text3:#664422;--text4:#332211;
   --accent:#FF9900;--col1:#FF9900;--col2:#FFCC00;--col3:#9999CC;
   --card-bg:#050505;--card-sel:#1a1200;
-  --meta:#776655;--lyric:#443322;
+  --meta:#776655;--lyric:#aa9977;
   --bpm:#FF9900;--key:#9999CC;--gen:#887766;--scr:#66CC66;
   --anchor-bg:#0f0800;--anchor-bdr:#FF9900;--anchor-col:#FF9900;
   --dc-play-bdr:#FF9900;--dc-play-bg:#0f0800;--dc-play-glow:#FF990033;
@@ -1291,7 +1291,7 @@ body.borg{
   --text:#00CC00;--text2:#007700;--text3:#004400;--text4:#002200;
   --accent:#00FF00;--col1:#00FF00;--col2:#00BB00;--col3:#00AAAA;
   --card-bg:#000;--card-sel:#001a00;
-  --meta:#005500;--lyric:#003300;
+  --meta:#005500;--lyric:#00aa55;
   --bpm:#00FF00;--key:#00AAAA;--gen:#006600;--scr:#00CC44;
   --anchor-bg:#001500;--anchor-bdr:#00FF00;--anchor-col:#00FF00;
   --dc-play-bdr:#00FF00;--dc-play-bg:#001500;--dc-play-glow:#00FF0022;
@@ -1392,7 +1392,8 @@ body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible',
 .col-hdr{padding:9px 14px;font-size:10px;letter-spacing:3px;text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0;font-family:var(--lbl-font)}
 #c1 .col-hdr{color:var(--col1)}#c2 .col-hdr{color:var(--col2)}#c3 .col-hdr{color:var(--col3)}
 .col-body{overflow-y:auto;flex:1;padding:10px}
-.anchor-box{background:var(--anchor-bg);border:1px solid var(--anchor-bdr);border-radius:4px;padding:12px}
+.anchor-box{position:relative;background:var(--anchor-bg);border:1px solid var(--anchor-bdr);border-radius:4px;padding:12px}
+.anchor-box .anc-art{float:right;width:56px;height:56px;object-fit:cover;border-radius:4px;margin:0 0 8px 12px;opacity:0.9}
 .anchor-box .deck-tag{font-size:9px;color:var(--anchor-col);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;opacity:0.7}
 .anchor-box .an{font-size:14px;margin-bottom:5px}
 .anchor-box .an .aa{color:var(--anchor-col)}.anchor-box .an .at{color:var(--text)}
@@ -1406,7 +1407,7 @@ body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible',
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
-.lyric-summary{font-size:11px;color:var(--lyric);margin-top:3px;white-space:normal;overflow-wrap:break-word;cursor:default}
+.lyric-summary{font-size:11px;color:var(--lyric);font-style:italic;margin-top:3px;white-space:normal;overflow-wrap:break-word;cursor:default}
 #lyr-tooltip{display:none;position:fixed;z-index:9999;pointer-events:none}
 #lyr-tooltip .tk{zoom:2;min-width:220px;max-width:260px;cursor:default!important;border-color:#444!important;background:#181818!important;margin-bottom:0!important;box-shadow:0 8px 32px rgba(0,0,0,.8)}
 body.day #lyr-tooltip .tk{background:#e8e3dd!important;border-color:#aaa!important}
@@ -1895,8 +1896,9 @@ function dcCardHtml(deck){
   const playing=deckPlaying[deck];
   const cls=t?(playing?'dc dc-playing':'dc dc-loaded'):'dc dc-idle';
   const label=`DECK ${deck.toUpperCase()}${playing?' ▶':''}`;
+  const dcArt=t&&t.art_url?`<img src="${t.art_url}" style="float:right;width:32px;height:32px;object-fit:cover;border-radius:3px;margin:0 0 4px 8px;opacity:0.85" onerror="this.style.display='none'" alt="">`:''
   const body=t
-    ? `<div class="dc-name"><span class="dc-artist">${esc(t.artist)}</span><span class="dc-sep"> — </span><span class="dc-title">${esc(t.title)}</span></div>
+    ? `${dcArt}<div class="dc-name"><span class="dc-artist">${esc(t.artist)}</span><span class="dc-sep"> — </span><span class="dc-title">${esc(t.title)}</span></div>
        <div class="dc-meta">${t.bpm} BPM · ${t.key||'—'} · ${t.genre||'—'}</div>`
     : `<div class="dc-empty">Nothing loaded</div>`;
   const click=t?`onclick="setDeckAnchor('${deck}')"`:'' ;
@@ -2064,7 +2066,8 @@ async function loadAnchor(track,deck){
   const deckTag=deck?`<div class="deck-tag">DECK ${deck.toUpperCase()} ▶ NOW PLAYING</div>`:'';
   // Replace anchor box only; keep deck cards
   const cardsEl=b1.querySelector('.deck-cards');
-  const anchorHtml=`<div class="anchor-box" data-track="${esc(JSON.stringify(track))}">${deckTag}
+  const ancArt=track.art_url?`<img class="anc-art" src="${track.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  const anchorHtml=`<div class="anchor-box" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
     ${meta(track,false)}</div>`;
   if(cardsEl){
