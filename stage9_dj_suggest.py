@@ -1310,6 +1310,31 @@ body.borg{
   --act-col:#00FF00;
   --btn-r:0px;--lbl-font:'Courier New',monospace;
 }
+body.passthrough{
+  --bg:#000;--bg2:#000;--bg3:#000;--bg4:#000;
+  --border:transparent;--border2:#003300;
+  --text:#FFFFFF;--text2:#00FF00;--text3:#66FF66;--text4:#003300;
+  --accent:#00FF00;--col1:#00FF00;--col2:#00FF00;--col3:#00FF00;
+  --card-bg:#000;--card-sel:#002200;
+  --meta:#88FF88;--lyric:#88FF88;
+  --bpm:#FFCC00;--key:#00CCFF;--gen:#888;--scr:#00FF00;
+  --anchor-bg:#000;--anchor-bdr:transparent;--anchor-col:#00FF00;
+  --dc-play-bdr:#00FF00;--dc-play-bg:#000;--dc-play-glow:#00FF0033;
+  --srch-bg:#000;--inp-bg:#000;--inp-bdr:#003300;--res-bg:#000;
+  --hdr-bg:#000;--hdr-bdr:transparent;--hdr-text:#00FF00;--hdr-sub:#004400;
+  --deck-bg:#000;--deck-bdr:transparent;
+  --pill-bdr:#003300;--pill-text:#006600;--pill-loaded-bg:#000;
+  --swap-bg:#000;--swap-bdr:#003300;--swap-text:#00FF00;
+  --save-bg:#002200;--save-text:#00FF00;
+  --surp-bg:#002233;--surp-text:#00FFFF;
+  --show-bg:#000;--show-bdr:#003300;--show-text:#00AA00;
+  --show-f-bg:#001a00;--show-f-bdr:#00FF00;--show-f-text:#00FF00;
+  --sl-bg:#000;--sl-bdr:#003300;--sl-text:#00AA00;
+  --sl-on-bg:#001a00;--sl-on-bdr:#00FF00;--sl-on-text:#00FF00;
+  --rst-bg:#000;--rst-bdr:#003300;--rst-text:#006600;
+  --act-col:#00FF00;
+  --btn-r:3px;--lbl-font:inherit;
+}
 /* ══ Base elements (all themes via CSS vars) ══════════════════════════════════ */
 body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible','Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
 #hdr{background:var(--hdr-bg);padding:10px 18px;border-bottom:2px solid var(--hdr-bdr);display:flex;align-items:center;gap:16px;flex-shrink:0}
@@ -1481,6 +1506,42 @@ body.borg .deck-pill.playing{color:var(--accent);background:transparent}
 body.borg .anchor-box{border-style:dashed}
 body.borg .tk:hover{box-shadow:0 0 6px #00FF0011}
 body.borg .dc.dc-playing{box-shadow:0 0 8px var(--dc-play-glow)}
+/* ══ Passthrough structural overrides (Viture AR HUD mode) ════════════════════ */
+.slot-num{display:none;color:#00FF00;font-family:'Courier New',monospace;font-weight:bold;font-size:14px;margin-right:8px;min-width:22px}
+body.passthrough{background:#000}
+body.passthrough #hdr{padding:3px 10px;border-bottom:0;min-height:22px;gap:8px}
+body.passthrough #hdr h1{font-size:11px;letter-spacing:1.5px;opacity:0.5}
+body.passthrough #tc,
+body.passthrough #osc-status,
+body.passthrough #pill-a,
+body.passthrough #pill-b,
+body.passthrough #deck-msg,
+body.passthrough #show-btn,
+body.passthrough #c1,
+body.passthrough #lyr-tooltip,
+body.passthrough #activity-bar{display:none !important}
+body.passthrough #deck-bar{padding:4px 10px;min-height:26px;border-bottom:0}
+body.passthrough #cols{grid-template-columns:1fr 1fr;gap:10px}
+body.passthrough .col-hdr{font-size:11px;letter-spacing:2px;opacity:0.7;border-bottom:1px solid #003300;color:#00FF00}
+body.passthrough .tk{background:#000;border:1px solid #003300;padding:10px 12px;font-size:15px}
+body.passthrough .tk.sel{border-color:#00FF00;background:#001500;box-shadow:0 0 8px #00FF0033}
+body.passthrough .tk:hover{border-color:#00AA00}
+body.passthrough .tn{font-size:15px;line-height:1.3}
+body.passthrough .meta{font-size:13px}
+body.passthrough .lyric-summary{font-size:12px;color:#88FF88}
+body.passthrough .art-thumb{opacity:0.75}
+body.passthrough #q{font-size:15px;padding:6px 10px;background:#000;border:1px solid #003300;color:#00FF00}
+body.passthrough #q::placeholder{color:#005500}
+body.passthrough #q:focus{border-color:#00FF00;box-shadow:0 0 6px #00FF0044}
+body.passthrough .slot-num{display:inline-block}
+body.passthrough #theme-btn,
+body.passthrough #art-reload-btn{font-size:11px;padding:2px 6px;border-color:#003300;color:#00FF00}
+body.passthrough .panic-btn,
+body.passthrough #swap-btn,
+body.passthrough #setlist-btn{background:#000;color:#00FF00;border:1px solid #003300;padding:4px 10px;font-size:11px}
+body.passthrough .panic-btn:hover,
+body.passthrough #swap-btn:hover,
+body.passthrough #setlist-btn:hover{background:#001500;border-color:#00FF00}
 </style>
 </head>
 <body>
@@ -1490,7 +1551,7 @@ body.borg .dc.dc-playing{box-shadow:0 0 8px var(--dc-play-glow)}
   <h1>♪ DJ Block Planner</h1>
   <small id="tc">loading…</small>
   <span id="osc-status" class="off">OSC OFF</span>
-  <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg">🌙</button>
+  <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg → Passthrough">🌙</button>
   <button id="art-reload-btn" onclick="reloadArt()" title="Reload album art index (after Syncthing sync)">🖼</button>
 </div>
 <div id="deck-bar">
@@ -1562,8 +1623,8 @@ let deckTracks={a:null,b:null};
 let deckPlaying={a:false,b:false};
 
 // ── Theme cycle (Night → Day → LCARS → Borg) ─────────────────────────────────
-const THEMES=['night','day','lcars','borg'];
-const THEME_ICONS={night:'🌙',day:'☀',lcars:'🖖',borg:'👾'};
+const THEMES=['night','day','lcars','borg','passthrough'];
+const THEME_ICONS={night:'🌙',day:'☀',lcars:'🖖',borg:'👾',passthrough:'🕶'};
 (function(){
   // Migrate old 2-theme values ('light'/'dark') to new 4-theme names
   let saved=localStorage.getItem('theme')||'night';
@@ -1589,6 +1650,38 @@ function reloadArt(){
     .then(r=>r.json())
     .then(d=>{btn.textContent='🖼';console.log('Art index reloaded:',d.count,'entries');})
     .catch(()=>{btn.textContent='🖼';});
+}
+
+// ── Keyword commands — typed (or voice-dictated) into #q, fire on Enter ─────
+const KEYWORD_CMDS=[
+  {re:/^swap\s+decks?$/i,          fn:()=>swapDecks()},
+  {re:/^save\s+me$/i,              fn:()=>rescueMe('save')},
+  {re:/^surprise\s+me$/i,          fn:()=>rescueMe('surprise')},
+  {re:/^open\s+setlist$/i,         fn:()=>openSetlist()},
+  {re:/^open\s+show$/i,            fn:()=>openShowConfig()},
+  {re:/^select\s+(\d{1,2})$/i,     fn:m=>selectSlot2Num(parseInt(m[1])-1)},
+  {re:/^select\s+([ab])$/i,        fn:m=>loadSelectedToDeck(m[1].toLowerCase())},
+];
+function tryKeywordCommand(txt){
+  for(const {re,fn} of KEYWORD_CMDS){
+    const m=txt.match(re);
+    if(m){fn(m);return true;}
+  }
+  return false;
+}
+function selectSlot2Num(idx){
+  if(!S2||idx<0||idx>=S2.length){toast(`No candidate ${idx+1}`);return;}
+  pickSlot2(idx);
+  const t=S2[idx];
+  toast(`Selected [${idx+1}] ${t.artist} — ${t.title}`);
+}
+async function loadSelectedToDeck(letter){
+  if(!slot2){toast('Nothing selected — say "select 1" first');return;}
+  try{
+    const r=await fetch(`/api/load-to-deck?deck=${letter}&path=${encodeURIComponent(slot2.path)}`,{method:'POST'});
+    if(r.ok){toast(`Loaded → Deck ${letter.toUpperCase()}`);}
+    else{toast('Load failed');}
+  }catch(e){toast('Load failed');}
 }
 
 // ── Show Genre Config ─────────────────────────────────────────────────────────
@@ -1836,9 +1929,10 @@ function meta(t,showScore){
     ${showScore?`<span class="scr">${t.score}%</span>`:''}${txBadge(t)}</div>`;
 }
 function tkHtml(t,idx,sel,showScore){
+  const slotNum=`<span class="slot-num">[${idx+1}]</span>`;
   const artHtml=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:'';
   return`<div class="tk${sel?' sel':''}" id="s2-${idx}" data-track="${esc(JSON.stringify(t))}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-    ${artHtml}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+    ${artHtml}<div class="tn" style="${t.art_url?'padding-right:42px':''}">${slotNum}<span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
     ${lyricLine(t)}${meta(t,showScore)}</div>`;
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -2043,6 +2137,17 @@ q.addEventListener('input',()=>{
   clearTimeout(st);
   if(q.value.trim().length<2){res.style.display='none';return}
   st=setTimeout(()=>doSearch(q.value.trim()),150);
+});
+q.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const txt=q.value.trim();
+    if(tryKeywordCommand(txt)){
+      q.value='';
+      res.style.display='none';
+      clearTimeout(st);
+      e.preventDefault();
+    }
+  }
 });
 document.addEventListener('click',e=>{if(!e.target.closest('#search-wrap'))res.style.display='none'});
 
@@ -2261,6 +2366,22 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
     def swap_decks():
         osc_state.swap_decks()
         return jsonify({"ok": True})
+
+    @app.route("/api/load-to-deck", methods=["POST"])
+    def load_to_deck():
+        """Write a 1-track M3U for the given deck. Mirrors CLI 1-5/q-t shortcut."""
+        deck = request.args.get("deck", "").lower()
+        path = request.args.get("path", "")
+        if deck not in ("a", "b"):
+            return jsonify({"error": "bad deck"}), 400
+        t = index.get(path)
+        if not t:
+            return jsonify({"error": "track not in collection"}), 404
+        SUGGESTIONS_DIR.mkdir(exist_ok=True)
+        out = SUGGESTIONS_DIR / f"deck_{deck}.m3u"
+        label = f"{t.artist} — {t.title}  [{t.bpm:.1f} BPM | {t.key} | {t.genre}]"
+        out.write_text(f"#EXTM3U\n#EXTINF:-1,{label}\n{path}\n", encoding="utf-8")
+        return jsonify({"ok": True, "deck": deck, "path": path})
 
     @app.route("/api/deck-status")
     def deck_status():
