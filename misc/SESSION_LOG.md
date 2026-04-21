@@ -354,3 +354,48 @@ SKIPPY: Fixed three things: (1) summaries back in song cards — Track now reads
 - misc/SESSION_LOG.md — this entry
 
 ---
+
+## SESSION 8 — April 20, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: I want to go get all of the correct album art for all of our albums, and I want to integrate it into the song cards in the browser so we can see them there. Especially in the big tooltip.
+
+SKIPPY: Built `tools/fetch_album_art.py` — resumable Spotify-primary / MusicBrainz-fallback / mutagen-embedded-tertiary fetcher. Art stored as `{md5_of_dkey}.jpg` in `state/album_art/`, indexed in `state/album_art_index.json`. Added 36×36px thumbnail top-right of every song card and 56×56px in the 2× hover tooltip. Flask `/art/<filename>` route serves them. Background fetch running; ~800 tracks done.
+
+CAPTAIN: Make sure we add the album art to the Traktor library as well.
+
+SKIPPY: Added `--embed` mode to the fetcher using mutagen — writes APIC tags into MP3/AIFF, MP4Cover into M4A, FLAC Picture into FLAC. Run after fetch completes.
+
+CAPTAIN: I also want to feed the entire UI to be like the LCARS UI from Star Trek TNG. And investigate why played tracking isn't working — any song played for more than 140sec we could consider 'played' safely.
+
+SKIPPY: Played bug found: old threshold was `other_deck_duration + 120s` — if other deck had a 4-min song that's 360s, longer than most tracks. Replaced with solo-timer: 140s after the other deck's file closes = played. LCARS theme initiated as full redesign.
+
+CAPTAIN: Could you also add a daylight theme? Let's do Night / Day / LCARS / Borg as four switchable themes.
+
+SKIPPY: Rebuilt entire CSS as a CSS variable system. `:root` = Night (dark, red accent). `body.day` = warm beige outdoor. `body.lcars` = TNG orange/gold/lavender, Oswald font, pill buttons, solid colored column headers. `body.borg` = green-on-black, Courier New, dashed borders. Theme-cycle button (🌙→☀→🖖→👾) persists via localStorage.
+
+CAPTAIN: Proceed.
+
+SKIPPY: Completed: removed Reset Show from deck-bar, moved it into the setlist modal where it belongs. Committed and pushed the whole session.
+
+**Key decisions made:**
+- Art index keyed by dkey (artist\ttitle lowercased) — consistent with `_song_key()` in main server
+- Traktor binary art cache is proprietary (0x084b magic) — bypassed entirely; embed directly into audio tags
+- Solo-timer approach for played tracking: clean, poll-interval-independent, 140s threshold
+- 4-theme CSS variable architecture: structural overrides scoped under `body.lcars` / `body.borg`
+- Reset Show belongs in the setlist modal, not cluttering the deck-bar
+
+**Notable moments:**
+- Traktor's cached art format is completely proprietary — 62% of tracks had a COVERARTID pointing to useless binary blobs
+- `.gitignore` had `state/*` which silently excluded `album_art_index.json` until we added the exception
+- Old played logic was mathematically guaranteed to miss any song shorter than the other deck's duration + 2min
+
+**Files modified:**
+- `tools/fetch_album_art.py` — new, resumable art fetcher with embed mode
+- `stage9_dj_suggest.py` — album art display, 4-theme CSS, solo played tracking, deck-bar cleanup
+- `state/album_art_index.json` — new, ~800 initial entries
+- `.gitignore` — album_art_index.json exception
+
+---
