@@ -30,6 +30,7 @@ Save and close Preferences. Traktor will now broadcast track info here.
 """
 
 import json
+import os
 import queue
 import re
 import subprocess
@@ -622,11 +623,17 @@ def _reset_show() -> None:
     print("  [setlist] Show reset — played history cleared")
 
 
+_SUIP_HOOKS: list = []   # callbacks invoked on any state change relevant to SUIP
+
+
 def _update_sugg_state(slot2: list, slot3: list, anchor) -> None:
     with _SUGG_LOCK:
         _SUGG_STATE["slot2"]  = slot2
         _SUGG_STATE["slot3"]  = slot3
         _SUGG_STATE["anchor"] = anchor
+    for h in list(_SUIP_HOOKS):
+        try: h()
+        except Exception: pass
 
 
 def _get_sugg_state() -> dict:
@@ -1095,6 +1102,10 @@ class OSCState:
         for q in list(self._sse_qs):
             try: q.put_nowait(event)
             except: pass
+        # Fire SUIP hooks on any push — client-side coalescer caps at 10/sec.
+        for h in list(_SUIP_HOOKS):
+            try: h()
+            except Exception: pass
 
     def on_message(self, deck: str, field: str, value: str):
         with self._lock:
@@ -2649,6 +2660,13 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
     def ui():
         return Response(HTML, mimetype="text/html")
 
+    @app.route("/.well-known/skippy-passthrough.json")
+    def suip_manifest():
+        """SUIP v1 manifest — consumed by SkippyView on /passthrough/register.
+        Endpoint is this URL; that's what the Captain relays to SkippyView."""
+        from tools.suip_scene import build_manifest
+        return jsonify(build_manifest()), 200, {"Cache-Control": "no-cache"}
+
     @app.route("/setlist")
     def setlist_page():
         """
@@ -3029,6 +3047,58 @@ def main():
         daemon=True,
     )
     flask_thread.start()
+
+    # ── SUIP client — opt-in via SKIPPY_URL env var ─────────────────────────
+    skippy_url = os.environ.get("SKIPPY_URL", "").strip()
+    if skippy_url:
+        try:
+            import logging as _log
+            _log.basicConfig(level=_log.INFO)
+            sys.path.insert(0, str(BASE / "tools"))
+            from suip_client import SUIPClient, IntentHandler
+            from suip_scene import DJState
+
+            default_manifest = f"http://127.0.0.1:{PORT}/.well-known/skippy-passthrough.json"
+            manifest_url = os.environ.get("SUIP_MANIFEST_URL", default_manifest)
+
+            _suip_handler = IntentHandler(
+                osc_state       = osc_state,
+                index           = index,
+                tracks          = tracks,
+                suggestions_dir = SUGGESTIONS_DIR,
+                suggest_slot2_fn= suggest_slot2,
+                suggest_slot3_fn= suggest_slot3,
+                update_sugg_state_fn = _update_sugg_state,
+            )
+
+            def _get_state() -> DJState:
+                with _SUGG_LOCK:
+                    a = _SUGG_STATE["anchor"]
+                    a_dict = a.to_dict() if a is not None else None
+                    s2 = list(_SUGG_STATE["slot2"])
+                    s3 = list(_SUGG_STATE["slot3"])
+                # Observe for IntentHandler's pick-state logic
+                _suip_handler.observe_state(a, s2, s3)
+                return DJState(
+                    anchor=a_dict,
+                    slot2=s2,
+                    slot3=s3,
+                    deck_loaded=osc_state.get_loaded(),
+                    deck_playing=osc_state.get_playing(),
+                    selected_slot2_idx=_suip_handler.selected_idx(),
+                )
+
+            _suip = SUIPClient(skippy_url, manifest_url, _get_state, _suip_handler)
+            _SUIP_HOOKS.append(_suip.notify_state_changed)
+            _suip.start()
+            import atexit
+            atexit.register(_suip.stop)
+            print(f"  SUIP client → {skippy_url}")
+            print(f"  Manifest   → {manifest_url}")
+        except Exception as ex:
+            print(f"  SUIP client failed to start: {ex}")
+    else:
+        print(f"  SUIP client disabled (set SKIPPY_URL=<skippy-base> to enable)")
 
     run_key_listener()   # blocks main thread; x / Ctrl+C exits
 
