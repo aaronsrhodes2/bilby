@@ -83,3 +83,31 @@ pip install pyannote.audio   # full speaker diarization, heavier
   authoritative beat grid instead of re-detecting.
 
 ---
+
+---
+
+## PROJECT: PC as Remote MCP Server
+**Logged:** Session 6, April 20, 2026
+**Status:** Not started — future project
+
+### Idea
+
+The PC (with its 4070 Ti and always-on availability) becomes a remote MCP
+(Model Context Protocol) server accessible from the Mac and the Captain's phone.
+
+**What this enables:**
+- Run heavy audio analysis (librosa, Whisper STT) on the PC's GPU/CPU
+  remotely from Claude on the Mac — no waiting at the desk
+- Issue commands from the phone: "run the overnight autocue pass", "fetch lyrics
+  for new tracks added today"
+- Claude on any device can dispatch work to the PC via MCP tool calls
+
+**Components to build:**
+1. An MCP server running on the PC (Python, `mcp` package from Anthropic)
+2. Expose tools: `run_autocue()`, `fetch_lyrics()`, `check_progress()`, `get_setlist()`
+3. Tunnel: Tailscale or ngrok so the PC is reachable from outside the LAN
+4. Authentication: shared secret or Tailscale ACLs
+
+**Precedent:** The dispatch files (PC_AUTOCUE_TASK.md, DISPATCH_PC_LYRICS.md)
+are manual versions of this. The MCP server automates the dispatch entirely.
+

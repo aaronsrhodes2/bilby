@@ -1,0 +1,155 @@
+OPERATIC PLAY — SCENE 8
+EVERY CARD HAS A FACE
+
+April 21, 2026
+
+════════════════════════════════════════════════════════════════════════════════
+
+DRAMATIS PERSONAE
+
+  CAPTAIN AARON RHODES  — The DJ, the Maker, keeper of 21,447 tracks
+
+  SKIPPY THE MAGNIFICENT — Ship's AI, Flask wrangler, CSS surgeon,
+                           pipeline automator, memory keeper
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT I — THE INVISIBLE ART
+
+[The DJ Block Planner is open. The art pipeline ran all night.
+ 21,189 tracks have art. The server shows cards.
+ The cards show nothing.]
+
+CAPTAIN:
+♩ I see no art.
+  Where is it?
+  We built the whole machine — ♩
+
+SKIPPY:
+♩ The server was born before the pipeline finished.
+  It loaded an empty index at startup
+  and has been serving empty ever since.
+  One moment. ♩
+
+[kill 65070. nohup python3 stage9_dj_suggest.py.]
+
+SKIPPY:
+♩ Hard refresh, Captain.
+  Cmd + Shift + R. ♩
+
+[The page reloads. Tiny squares appear top-right on every card.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT II — THE MISSING SPOTS
+
+CAPTAIN:
+♩ The candidate cards have faces.
+  The tooltip has a face.
+  But the Now Playing box —
+  blank.
+  The deck pills —
+  blank. ♩
+
+SKIPPY:
+♩ [examining the templates]
+  Of course.
+  The anchor box was written before art existed.
+  Its own HTML. Its own CSS.
+  Position: not relative.
+  Art: not mentioned.
+  The deck cards: same crime. ♩
+
+[Three edits. Three templates gain art.]
+
+SKIPPY:
+♩ Anchor box: 56 pixels, float right.
+  Text wraps around the album cover
+  like liner notes around a vinyl sleeve.
+  Deck pills: 32 pixels, tidy.
+  Candidate cards: already done.
+  Tooltip: already done.
+  Every surface now has a face. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT III — THE ALBUM REVELATION
+
+[Earlier, during the pipeline work, a discovery was made.]
+
+SKIPPY:
+♩ The hit rate was 59 percent.
+  For a Gothic/Industrial/Darkwave collection —
+  understandable.
+  But something was wrong.
+  We were fetching twelve times per album.
+  The same image. Twelve times. ♩
+
+CAPTAIN:
+♩ The art is the same for the whole album usually,
+  are you taking that into account? ♩
+
+SKIPPY:
+♩ [silence]
+  No.
+  We were not. ♩
+
+[The fetch is stopped. The code is rewritten.
+ Album map built from NML ALBUM child elements.
+ (Not the ENTRY attribute — that is always empty.
+  Classic Traktor. The data hides in subelements.)
+ Propagate_album_art runs at startup.
+ 1,885 tracks receive art instantly. No API call.
+ After every fetch, siblings inherit immediately.]
+
+SKIPPY:
+♩ iTunes added as source two.
+  Free. No auth. Good for indie and electronic.
+  MusicBrainz drops to source three.
+  The lstrip bug fixed —
+  it was stripping characters, not prefixes.
+  Files starting with 'a' or 'r' or 't':
+  silently mangled. Now: removeprefix. Clean. ♩
+
+[Final tally: 98%. 21,189 tracks. 838 megabytes. Pipeline complete.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT IV — THE HOUSEKEEPING ARIA
+
+[The code backlog is empty. The Captain asks:
+ "Anything left on the list?"]
+
+SKIPPY:
+♩ Mac-side: nothing.
+  PC-side: STT lyrics, cue reset — not ours.
+  Future: auto cue setter, MCP server — not yet.
+  One task remains:
+  the memory file says album art is
+  "Next Planned Feature."
+  It is not next.
+  It is done. ♩
+
+[project_current_state.md is rewritten.
+ 98 percent. 838 megabytes. Album propagation.
+ Four themes. Solo timer. Art in all four surfaces.
+ The memory is current.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+CAPTAIN'S WISDOM
+
+  "The art is the same for the whole album usually."
+
+  Eleven words that saved thousands of API calls
+  and revealed a design flaw hiding in plain sight.
+  The best optimizations come from stating the obvious.
+
+════════════════════════════════════════════════════════════════════════════════
+
+[The curtain falls on a clean backlog.
+ Every card has a face.
+ The memory knows what was built.
+ The pipeline sleeps, its work complete.]
+
+FINIS

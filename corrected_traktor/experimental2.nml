@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<NML VERSION="19">
+<HEAD COMPANY="www.native-instruments.com" APPLICATION="Traktor" />
+<COLLECTION ENTRIES="0">
+    </COLLECTION>
+<PLAYLISTS>
+    <NODE TYPE="FOLDER" NAME="Playlists">
+        <SUBNODES>
+            <NODE TYPE="PLAYLIST" NAME="Goth Industrial 4.5hr">
+                <PLAYLIST ENTRIES="68">
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Bauhaus - Dark Entries.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Sisters of Mercy - Alice.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Siouxsie and the Banshees - Spellbound.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Kælan Mikla - Sólstóður.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="She Past Away - Ritüel.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Boy Harsher - Pain.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Molchat Doma - Sudno.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Nitzer Ebb - Join in the Chant.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Front 242 - Headhunter v1.0.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="VNV Nation - Beloved.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Cure - Just Like Heaven.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Depeche Mode - Personal Jesus.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Bauhaus - She's In Parties.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Sisters of Mercy - Lucretia My Reflection.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Sisters of Mercy - Temple of Love.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Siouxsie and the Banshees - Cities in Dust.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="VNV Nation - Chrome.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="VNV Nation - Standing.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Covenant - Dead Stars.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Covenant - Call the Ships to Port.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Apoptygma Berzerk - Until the End of the World.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Apoptygma Berzerk - Kathy's Song.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Cure - A Forest.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Cure - Fascination Street.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Depeche Mode - Enjoy the Silence.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Depeche Mode - Policy of Truth.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Joy Division - Love Will Tear Us Apart.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Joy Division - She's Lost Control.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Boy Harsher - Keep Driving.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Lebanon Hanover - Gallowdance.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Twin Tribes - Fantasmas.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Mareux - The Perfect Girl.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="She Wants Revenge - Tear You Apart.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Soft Cell - Tainted Love.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="New Order - Blue Monday.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Nitzer Ebb - Murderous.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Front 242 - Welcome to Paradise.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="KMFDM - Juke Joint Jezebel.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Ministry - Stigmata.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Ministry - (Every Day Is) Halloween.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Mission - Deliverance.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The Cult - She Sells Sanctuary.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Killing Joke - Love Like Blood.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Xmal Deutschland - Incubus Succubus II.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Clan of Xymox - Jasmine and Rose.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Clan of Xymox - Louise.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Ladytron - Destroy Everything You Touch.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Fad Gadget - Ricky's Hand.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Anne Clark - Our Darkness.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Q Lazzarus - Goodbye Horses.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="The March Violets - Snake Dance.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="London After Midnight - Sacrifice.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Switchblade Symphony - Bad Trash.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Echo &amp; the Bunnymen - The Killing Moon.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Kontravoid - Too Deep.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Ultra Sunn - Keep Your Eyes Wild.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Pixel Grip - Alphaville.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Linea Aspera - Malarone.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Drab Majesty - Cold Exertion.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Ash Code - Dry Your Eyes.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Minuit Machine - Fear of Despair.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Hante. - Living in a Movie.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Selofan - Give Me a Reason.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Actors - In Real Life.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Priest - Demon's Call.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Blackbook - Eternal Glory.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Frozen Plasma - Mayhem.mp3" /></ENTRY>
+                    <ENTRY><PRIMARYKEY TYPE="0" KEY="Synthattack - We Are SynthAttack 2.0.mp3" /></ENTRY>
+                </PLAYLIST>
+            </NODE>
+        </SUBNODES>
+    </NODE>
+</PLAYLISTS>
+</NML>

@@ -7,7 +7,7 @@ a track, suggestions appear automatically — no typing, no clicking.
 Falls back to manual search if OSC is not configured.
 
 Run:   python3 stage9_dj_suggest.py
-Open:  http://localhost:5001
+Open:  http://localhost:7334
 
 ── Traktor OSC setup (one-time) ─────────────────────────────────────────────
 Traktor Preferences → Controller Manager → Add → Generic OSC
@@ -31,6 +31,7 @@ Save and close Preferences. Traktor will now broadcast track info here.
 
 import json
 import queue
+import re
 import subprocess
 import sys
 import termios
@@ -51,6 +52,8 @@ TRAKTOR_NML     = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/coll
 SUGGESTIONS_DIR = BASE / "suggestions"
 REP_FLAGS_FILE  = BASE / "misc" / "reputation_flags.json"
 LYRICS_INDEX    = BASE / "state" / "lyrics_index.json"
+ART_INDEX_PATH  = BASE / "state" / "album_art_index.json"
+ART_DIR         = BASE / "state" / "album_art"
 ACTIVITY_FILE   = BASE / "state" / "activity.json"
 PORT            = 7334
 OSC_PORT        = 9000
@@ -58,6 +61,25 @@ OSC_PORT        = 9000
 # ── Data model ────────────────────────────────────────────────────────────────
 
 RANKING_TO_STARS = {0: 0, 51: 1, 102: 2, 153: 3, 204: 4, 255: 5}
+
+# ── Instrumental detection ────────────────────────────────────────────────────
+# Unifies every signal we have today (title patterns, STT theme tag, STT-generated
+# "Instrumental — no vocals detected" summary). New signals plug in here and all
+# consumers (UI badge, left-border color, future filters) pick them up for free.
+_INSTRUMENTAL_TITLE_RE = re.compile(
+    r'\b(instrumental|inst\.?|no[ -]?vocals?|karaoke|ambient\s+mix|dub\s+mix)\b',
+    re.I,
+)
+def is_instrumental(title: str, lyric_theme: str | None, lyric_summary: str | None) -> bool:
+    if _INSTRUMENTAL_TITLE_RE.search(title or ""):
+        return True
+    if lyric_theme and lyric_theme.strip().lower() == "instrumental":
+        return True
+    s = (lyric_summary or "").strip().lower()
+    if s.startswith("instrumental") or s.startswith("instrumental —") or s.startswith("[instrumental]"):
+        return True
+    return False
+
 
 @dataclass
 class Track:
@@ -69,6 +91,8 @@ class Track:
     genre:    str
     stars:    int
     duration: float = 0.0   # seconds, from NML PLAYTIME
+    comment:  str   = ""    # NML INFO COMMENT — lyric summary written by write_nml_comments.py
+    art_url:  str   = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
 
     @property
     def search_text(self) -> str:
@@ -78,6 +102,8 @@ class Track:
         rep  = reputation_for(self.artist)
         lyr  = lyrics_for(self.path)
         sflag = song_flag_for(self.artist, self.title)
+        lyric_summary = lyr["summary"] if lyr else (self.comment or None)
+        lyric_theme   = lyr["theme"]   if lyr else None
         return {
             "path":         self.path,
             "artist":       self.artist,
@@ -91,9 +117,11 @@ class Track:
             "rep_tier":     rep["tier"]     if rep else None,
             "rep_summary":  rep["summary"]  if rep else None,
             "song_flag":    sflag,
-            "lyric_summary":lyr["summary"]  if lyr else None,
-            "lyric_theme":  lyr["theme"]    if lyr else None,
+            "lyric_summary":lyric_summary,
+            "lyric_theme":  lyric_theme,
             "lyric_flags":  lyr["flags"]    if lyr else [],
+            "art_url":      self.art_url or "",
+            "is_instrumental": is_instrumental(self.title, lyric_theme, lyric_summary),
         }
 
 
@@ -165,12 +193,32 @@ def lyrics_for(path: str) -> dict | None:
     return entry
 
 
+# ── Album art index ───────────────────────────────────────────────────────────
+
+def _load_art_index(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+ART_INDEX: dict[str, str] = _load_art_index(ART_INDEX_PATH)  # dkey → "/art/{hash}.jpg" | null
+
+
+# ── Song key (used for dedup everywhere) ─────────────────────────────────────
+
+def _song_key(t: Track) -> str:
+    """Dedup key — same artist+title = same song regardless of file/version."""
+    return f"{t.artist.lower().strip()}\t{t.title.lower().strip()}"
+
+
 # ── NML loader ────────────────────────────────────────────────────────────────
 
 def load_tracks(nml_path: Path) -> list[Track]:
     tree = ET.parse(nml_path)
     coll = tree.getroot().find("COLLECTION")
-    tracks = []
+    raw: list[tuple[int, Track]] = []   # (bitrate, track) — for dedup
     for e in coll.findall("ENTRY"):
         artist = e.get("ARTIST", "").strip()
         title  = e.get("TITLE",  "").strip()
@@ -185,6 +233,10 @@ def load_tracks(nml_path: Path) -> list[Track]:
             bpm = float(tempo.get("BPM", 0)) if tempo is not None else 0.0
         except ValueError:
             bpm = 0.0
+        try:
+            bitrate = int(info.get("BITRATE", 0) or 0)
+        except (ValueError, TypeError):
+            bitrate = 0
         ranking = int(info.get("RANKING", 0))
         path = traktor_to_abs(
             loc.get("VOLUME", ""), loc.get("DIR", ""), loc.get("FILE", "")
@@ -193,7 +245,9 @@ def load_tracks(nml_path: Path) -> list[Track]:
             duration = float(info.get("PLAYTIME", 0) or 0)
         except (ValueError, TypeError):
             duration = 0.0
-        tracks.append(Track(
+        dk      = f"{artist.lower().strip()}\t{title.lower().strip()}"
+        art_url = ART_INDEX.get(dk) or ""
+        raw.append((bitrate, Track(
             path     = path,
             artist   = artist,
             title    = title,
@@ -202,8 +256,20 @@ def load_tracks(nml_path: Path) -> list[Track]:
             genre    = info.get("GENRE", ""),
             stars    = RANKING_TO_STARS.get(ranking, 0),
             duration = duration,
-        ))
-    return tracks
+            comment  = info.get("COMMENT", "") or "",
+            art_url  = art_url,
+        )))
+
+    # Deduplicate by artist+title: keep highest-bitrate version.
+    # _2.mp3/_3.mp3 etc. are rename-collision duplicates from Stage 2 copy.
+    best: dict[str, tuple[int, Track]] = {}
+    for bitrate, t in raw:
+        key = _song_key(t)
+        existing = best.get(key)
+        if existing is None or bitrate > existing[0]:
+            best[key] = (bitrate, t)
+
+    return [t for _, t in best.values()]
 
 
 # ── Compatibility scoring ─────────────────────────────────────────────────────
@@ -362,11 +428,6 @@ def _theme(path: str) -> str | None:
 
 # ── Block suggestions ─────────────────────────────────────────────────────────
 
-def _song_key(t: Track) -> str:
-    """Dedup key — same artist+title = same song regardless of file/version."""
-    return f"{t.artist.lower().strip()}\t{t.title.lower().strip()}"
-
-
 def suggest_slot2(anchor: Track, tracks: list[Track], n: int = 8) -> list[dict]:
     anchor_theme    = _theme(anchor.path)
     anchor_artist   = anchor.artist.lower().strip()
@@ -507,10 +568,12 @@ _PLAYED_PATHS:   set[str]  = set()
 _PLAYED_ARTISTS: set[str]  = set()   # normalised lower-strip artist names
 _SETLIST:        list[dict] = []      # ordered played tracks {artist,title,genre,bpm,played_at}
 
-# How long a track must stay in a deck (beyond the other deck's song length)
-# before we consider it "played".  2 min gives time to preview without false-positives.
-PLAYED_GUARD_SECS  = 120   # added on top of other deck's duration
-SOLO_PLAYED_SECS   = 90    # threshold when no other-deck duration is available
+# A track is "played" when it has been the SOLE file open in Traktor for at
+# least this many seconds after the other deck's file closed.  140s ≈ 2:20 —
+# shorter than any track in the collection, longer than any intro preview/loop.
+# Previously we used (other_duration + 120) which was backwards and missed
+# most tracks.  This simpler rule is both more accurate and easier to reason about.
+SOLO_PLAYED_SECS = 140   # seconds a deck must be "solo" before it counts as played
 
 FLOOR_GENRES = {
     "EBM", "Industrial", "Gothic Rock", "Darkwave", "Post-Punk",
@@ -886,16 +949,19 @@ def start_lsof_watcher(
 
     Played detection (time-based):
       When a file leaves a deck, check how long it was open.
-      If it stayed longer than (other deck's track duration + PLAYED_GUARD_SECS),
-      it was almost certainly played — not just previewed and swapped.
+      Once the other deck's file closes, a solo timer starts. If the remaining
+      deck's file stays open for SOLO_PLAYED_SECS, it was definitely played.
       Confirmed-played tracks land in _SETLIST for the post-show export.
     """
     # path → deck letter
-    deck_map:   dict[str, str]           = {}
+    deck_map:       dict[str, str]   = {}
     # path → time.time() when first seen by lsof
-    load_times: dict[str, float]         = {}
-    # deck → Track currently in that deck (for duration lookup)
-    deck_track: dict[str, object]        = {}   # Track objects
+    load_times:     dict[str, float] = {}
+    # deck → Track currently in that deck
+    deck_track:     dict[str, object] = {}
+    # deck → timestamp when it became the SOLE active deck (other deck closed its file)
+    # Once (now - solo_since) >= SOLO_PLAYED_SECS, the deck's track counts as played.
+    deck_solo_since: dict[str, float] = {}
 
     def _resolve(fpath: str):
         track = index.get(fpath)
@@ -904,23 +970,20 @@ def start_lsof_watcher(
             track = next((t for t in tracks if Path(t.path).name == bn), None)
         return track
 
-    def _check_played(fpath: str, deck: str) -> None:
-        """Decide whether a departing track was actually played."""
-        load_time = load_times.pop(fpath, None)
-        if load_time is None:
-            return
-        time_open = time.time() - load_time
-        # Get the other deck's current track to estimate how long the set was running
+    def _on_file_left(fpath: str, deck: str) -> None:
+        """Called when a file disappears from a deck.
+
+        If the other deck still has a file open, start its solo timer now.
+        That means: once SOLO_PLAYED_SECS pass with that file still open,
+        the track was definitely played (not just previewed).
+        """
+        load_times.pop(fpath, None)
         other_deck = "b" if deck == "a" else "a"
-        other      = deck_track.get(other_deck)
-        if other and getattr(other, "duration", 0) > 30:
-            threshold = other.duration + PLAYED_GUARD_SECS
-        else:
-            threshold = SOLO_PLAYED_SECS
-        if time_open >= threshold:
-            track = _resolve(fpath)
-            if track:
-                _mark_played_track(track)
+        # Check if the other deck has a file currently open
+        other_path = next((p for p, d in deck_map.items() if d == other_deck), None)
+        if other_path and other_path not in deck_solo_since:
+            deck_solo_since[other_deck] = time.time()
+            print(f"  [lsof] Deck {deck.upper()} released — solo timer started for Deck {other_deck.upper()}")
 
     def _loop():
         nonlocal deck_map
@@ -955,11 +1018,22 @@ def start_lsof_watcher(
             new_files     = current_paths - prev_paths
             gone_files    = prev_paths    - current_paths
 
-            # Check departing files for played detection BEFORE updating deck_map
+            # Check departing files — start solo timers for surviving deck
             for fpath in gone_files:
                 deck = deck_map.get(fpath)
                 if deck:
-                    _check_played(fpath, deck)
+                    _on_file_left(fpath, deck)
+
+            # Check solo timers — mark played if threshold reached
+            now = time.time()
+            for deck, solo_start in list(deck_solo_since.items()):
+                if (now - solo_start) >= SOLO_PLAYED_SECS:
+                    solo_path = next((p for p, d in deck_map.items() if d == deck), None)
+                    if solo_path and solo_path in current_paths:
+                        track = _resolve(solo_path)
+                        if track:
+                            _mark_played_track(track)
+                    deck_solo_since.pop(deck, None)
 
             if not new_files and not gone_files:
                 continue
@@ -1096,6 +1170,12 @@ class OSCState:
             if b: self._push({"type": "loaded", "deck": "a",
                                "title": b["title"], "artist": b["artist"]})
 
+    def broadcast_input(self, text: str) -> None:
+        """Inject text into every browser's search box via SSE.
+        Used by external DJ services (OCR, voice-to-text, remote control)."""
+        with self._lock:
+            self._push({"type": "input_text", "text": text})
+
     def add_client(self, q):
         with self._lock: self._sse_qs.append(q)
 
@@ -1142,227 +1222,453 @@ HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DJ Block Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-/* ── Dark mode (default) ── */
+/* ══ Theme variables ══════════════════════════════════════════════════════════ */
+/* Night (default) */
 :root{
-  --bg:        #111;
-  --bg2:       #0d0d1a;
-  --bg3:       #0a0a0a;
-  --bg4:       #1a1a1a;
-  --border:    #1a1a1a;
-  --border2:   #2d2d2d;
-  --text:      #ddd;
-  --text2:     #888;
-  --text3:     #555;
-  --text4:     #444;
-  --accent:    #e63946;
-  --card-bg:   #161616;
-  --card-sel:  #1a1a2e;
-  --card-bdr:  #2a2a4a;
-  --meta:      #666;
-  --lyric:     #4a5568;
+  --bg:#111;--bg2:#0d0d1a;--bg3:#0a0a0a;--bg4:#1a1a1a;
+  --border:#1a1a1a;--border2:#2d2d2d;
+  --text:#ddd;--text2:#888;--text3:#555;--text4:#444;
+  --accent:#e63946;--col1:#e63946;--col2:#f4a261;--col3:#4cc9f0;
+  --card-bg:#161616;--card-sel:#1a1a2e;
+  --meta:#666;--lyric:#9aa5b8;
+  --bpm:#f4a261;--key:#a8dadc;--gen:#aaa;--scr:#4a9;
+  --anchor-bg:#1a0808;--anchor-bdr:#e63946;--anchor-col:#e63946;
+  --dc-play-bdr:#e63946;--dc-play-bg:#1a0808;--dc-play-glow:#e6394633;
+  --srch-bg:#161616;--inp-bg:#1e1e1e;--inp-bdr:#333;--res-bg:#1a1a1a;
+  --hdr-bg:#0d0d1a;--hdr-bdr:#e63946;--hdr-text:#e63946;--hdr-sub:#888;
+  --deck-bg:#0a0a0a;--deck-bdr:#1a1a1a;
+  --pill-bdr:#222;--pill-text:#444;--pill-loaded-bg:#1a1a1a;
+  --swap-bg:#1a1a1a;--swap-bdr:#333;--swap-text:#777;
+  --save-bg:#7f1d1d;--save-text:#fca5a5;
+  --surp-bg:#1e3a5f;--surp-text:#93c5fd;
+  --show-bg:#1a1a1a;--show-bdr:#3b2d6e;--show-text:#a78bfa;
+  --show-f-bg:#1e1b40;--show-f-bdr:#7c3aed;--show-f-text:#c4b5fd;
+  --sl-bg:#1a1a1a;--sl-bdr:#065f46;--sl-text:#6ee7b7;
+  --sl-on-bg:#064e3b;--sl-on-bdr:#34d399;--sl-on-text:#6ee7b7;
+  --rst-bg:#1a1a1a;--rst-bdr:#7f1d1d;--rst-text:#f87171;
+  --act-col:#4cc9f0;
+  --tx-beat:#14532d;--tx-beat-t:#4ade80;
+  --tx-frag:#713f12;--tx-frag-t:#facc15;
+  --tx-fx:#7c2d12;--tx-fx-t:#fb923c;
+  --tx-blend:#164e63;--tx-blend-t:#a8dadc;
+  --tx-stem:#701a75;--tx-stem-t:#e879f9;
+  --tx-loop:#4a1d96;--tx-loop-t:#c084fc;
+  --tx-efx:#7f1d1d;--tx-efx-t:#f87171;
+  --tx-cut:#1e293b;--tx-cut-t:#94a3b8;
+  --btn-r:3px;--lbl-font:inherit;
 }
-/* ── Light mode (outdoor) ── */
-body.light{
-  --bg:        #f0ede8;
-  --bg2:       #e8e4de;
-  --bg3:       #e2ddd7;
-  --bg4:       #d8d3cc;
-  --border:    #c8c3bc;
-  --border2:   #b8b3ac;
-  --text:      #1a1a1a;
-  --text2:     #444;
-  --text3:     #666;
-  --text4:     #888;
-  --accent:    #c0392b;
-  --card-bg:   #ebe7e1;
-  --card-sel:  #ddd8f0;
-  --card-bdr:  #9b8ec4;
-  --meta:      #555;
-  --lyric:     #6b7280;
+/* Day (outdoor) */
+body.day{
+  --bg:#f0ede8;--bg2:#e8e4de;--bg3:#e2ddd7;--bg4:#d8d3cc;
+  --border:#c8c3bc;--border2:#b8b3ac;
+  --text:#1a1a1a;--text2:#444;--text3:#666;--text4:#888;
+  --accent:#CC7700;--col1:#CC7700;--col2:#BB9900;--col3:#6677AA;
+  --card-bg:#ebe7e1;--card-sel:#fff0cc;
+  --meta:#555;--lyric:#4a5568;
+  --bpm:#b85a00;--key:#1a6080;--gen:#555;--scr:#2a7a3a;
+  --anchor-bg:#fff5e0;--anchor-bdr:#CC7700;--anchor-col:#CC7700;
+  --dc-play-bdr:#CC7700;--dc-play-bg:#fff5e0;--dc-play-glow:#CC770033;
+  --srch-bg:#e8e4de;--inp-bg:#f5f2ee;--inp-bdr:#b8b3ac;--res-bg:#ebe7e1;
+  --hdr-bg:#e8e4de;--hdr-bdr:#CC7700;--hdr-text:#CC7700;--hdr-sub:#666;
+  --deck-bg:#ddd8d0;--deck-bdr:#b8b3ac;
+  --pill-bdr:#b8b3ac;--pill-text:#666;--pill-loaded-bg:#d8d3cc;
+  --swap-bg:#d8d3cc;--swap-bdr:#b8b3ac;--swap-text:#444;
+  --save-bg:#b91c1c;--save-text:#fee2e2;
+  --surp-bg:#1e40af;--surp-text:#bfdbfe;
+  --show-bg:#e2ddd7;--show-bdr:#7c3aed;--show-text:#6d28d9;
+  --show-f-bg:#ede9fe;--show-f-bdr:#7c3aed;--show-f-text:#4c1d95;
+  --sl-bg:#e2ddd7;--sl-bdr:#065f46;--sl-text:#065f46;
+  --sl-on-bg:#d1fae5;--sl-on-bdr:#059669;--sl-on-text:#065f46;
+  --rst-bg:#e2ddd7;--rst-bdr:#b91c1c;--rst-text:#b91c1c;
+  --act-col:#1a6080;
 }
-body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
-#hdr{background:var(--bg2);padding:10px 18px;border-bottom:2px solid var(--accent);display:flex;align-items:center;gap:16px;flex-shrink:0}
-#hdr h1{color:var(--accent);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
-#hdr small{color:var(--text2);font-size:11px}
-/* Theme toggle button */
-#theme-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 8px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;letter-spacing:.5px;flex-shrink:0}
-#theme-btn:hover{border-color:var(--text2);color:var(--text)}
-#osc-status{font-size:10px;padding:3px 8px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
+/* LCARS (Star Trek TNG) */
+body.lcars{
+  --bg:#000;--bg2:#060606;--bg3:#040404;--bg4:#0a0a0a;
+  --border:#111;--border2:#1a1a1a;
+  --text:#FFCC99;--text2:#AA8855;--text3:#664422;--text4:#332211;
+  --accent:#FF9900;--col1:#FF9900;--col2:#FFCC00;--col3:#9999CC;
+  --card-bg:#050505;--card-sel:#1a1200;
+  --meta:#776655;--lyric:#aa9977;
+  --bpm:#FF9900;--key:#9999CC;--gen:#887766;--scr:#66CC66;
+  --anchor-bg:#0f0800;--anchor-bdr:#FF9900;--anchor-col:#FF9900;
+  --dc-play-bdr:#FF9900;--dc-play-bg:#0f0800;--dc-play-glow:#FF990033;
+  --srch-bg:#050505;--inp-bg:#0a0a0a;--inp-bdr:#221100;--res-bg:#070707;
+  --hdr-bg:#FF9900;--hdr-bdr:#FF9900;--hdr-text:#000;--hdr-sub:#4a2800;
+  --deck-bg:#060606;--deck-bdr:#FF9900;
+  --pill-bdr:#331100;--pill-text:#664422;--pill-loaded-bg:#0f0800;
+  --swap-bg:#111;--swap-bdr:#333;--swap-text:#886644;
+  --save-bg:#FF3300;--save-text:#fff;
+  --surp-bg:#334499;--surp-text:#99CCFF;
+  --show-bg:#221144;--show-bdr:#9966CC;--show-text:#CC99FF;
+  --show-f-bg:#331166;--show-f-bdr:#CC99FF;--show-f-text:#fff;
+  --sl-bg:#003322;--sl-bdr:#00CC66;--sl-text:#00FF88;
+  --sl-on-bg:#005533;--sl-on-bdr:#00FF88;--sl-on-text:#00FFAA;
+  --rst-bg:#330000;--rst-bdr:#FF3300;--rst-text:#FF6666;
+  --act-col:#FF9900;
+  --btn-r:20px;--lbl-font:'Oswald',sans-serif;
+}
+/* Borg */
+body.borg{
+  --bg:#000;--bg2:#000305;--bg3:#000;--bg4:#010a01;
+  --border:#001500;--border2:#002800;
+  --text:#00CC00;--text2:#007700;--text3:#004400;--text4:#002200;
+  --accent:#00FF00;--col1:#00FF00;--col2:#00BB00;--col3:#00AAAA;
+  --card-bg:#000;--card-sel:#001a00;
+  --meta:#005500;--lyric:#00aa55;
+  --bpm:#00FF00;--key:#00AAAA;--gen:#006600;--scr:#00CC44;
+  --anchor-bg:#001500;--anchor-bdr:#00FF00;--anchor-col:#00FF00;
+  --dc-play-bdr:#00FF00;--dc-play-bg:#001500;--dc-play-glow:#00FF0022;
+  --srch-bg:#000;--inp-bg:#000;--inp-bdr:#003300;--res-bg:#000805;
+  --hdr-bg:#000;--hdr-bdr:#00FF00;--hdr-text:#00FF00;--hdr-sub:#006600;
+  --deck-bg:#000;--deck-bdr:#003300;
+  --pill-bdr:#002200;--pill-text:#004400;--pill-loaded-bg:#001500;
+  --swap-bg:#000;--swap-bdr:#003300;--swap-text:#006600;
+  --save-bg:#003300;--save-text:#00FF00;
+  --surp-bg:#003333;--surp-text:#00FFFF;
+  --show-bg:#000;--show-bdr:#003300;--show-text:#00AA00;
+  --show-f-bg:#001a00;--show-f-bdr:#00FF00;--show-f-text:#00FF00;
+  --sl-bg:#000;--sl-bdr:#003300;--sl-text:#00AA00;
+  --sl-on-bg:#001a00;--sl-on-bdr:#00FF00;--sl-on-text:#00FF00;
+  --rst-bg:#000;--rst-bdr:#003300;--rst-text:#006600;
+  --act-col:#00FF00;
+  --btn-r:0px;--lbl-font:'Courier New',monospace;
+}
+body.passthrough{
+  --bg:#000;--bg2:#000;--bg3:#000;--bg4:#000;
+  --border:transparent;--border2:#003300;
+  --text:#FFFFFF;--text2:#00FF00;--text3:#66FF66;--text4:#003300;
+  --accent:#00FF00;--col1:#00FF00;--col2:#00FF00;--col3:#00FF00;
+  --card-bg:#000;--card-sel:#002200;
+  --meta:#88FF88;--lyric:#88FF88;
+  --bpm:#FFCC00;--key:#00CCFF;--gen:#888;--scr:#00FF00;
+  --anchor-bg:#000;--anchor-bdr:transparent;--anchor-col:#00FF00;
+  --dc-play-bdr:#00FF00;--dc-play-bg:#000;--dc-play-glow:#00FF0033;
+  --srch-bg:#000;--inp-bg:#000;--inp-bdr:#003300;--res-bg:#000;
+  --hdr-bg:#000;--hdr-bdr:transparent;--hdr-text:#00FF00;--hdr-sub:#004400;
+  --deck-bg:#000;--deck-bdr:transparent;
+  --pill-bdr:#003300;--pill-text:#006600;--pill-loaded-bg:#000;
+  --swap-bg:#000;--swap-bdr:#003300;--swap-text:#00FF00;
+  --save-bg:#002200;--save-text:#00FF00;
+  --surp-bg:#002233;--surp-text:#00FFFF;
+  --show-bg:#000;--show-bdr:#003300;--show-text:#00AA00;
+  --show-f-bg:#001a00;--show-f-bdr:#00FF00;--show-f-text:#00FF00;
+  --sl-bg:#000;--sl-bdr:#003300;--sl-text:#00AA00;
+  --sl-on-bg:#001a00;--sl-on-bdr:#00FF00;--sl-on-text:#00FF00;
+  --rst-bg:#000;--rst-bdr:#003300;--rst-text:#006600;
+  --act-col:#00FF00;
+  --btn-r:3px;--lbl-font:inherit;
+}
+/* ══ Base elements (all themes via CSS vars) ══════════════════════════════════ */
+body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible','Courier New',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;transition:background .2s,color .2s}
+#hdr{background:var(--hdr-bg);padding:10px 18px;border-bottom:2px solid var(--hdr-bdr);display:flex;align-items:center;gap:16px;flex-shrink:0}
+#hdr h1{color:var(--hdr-text);font-family:var(--lbl-font);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
+#hdr small{color:var(--hdr-sub);font-size:11px}
+#theme-btn,#art-reload-btn,#stt-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 10px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:12px;cursor:pointer;letter-spacing:1px;flex-shrink:0;transition:all .15s;text-transform:uppercase}
+#theme-btn:hover,#art-reload-btn:hover,#stt-btn:hover{border-color:var(--text2);color:var(--text)}
+#art-reload-btn,#stt-btn{font-size:14px;padding:3px 7px}
+#stt-btn.listening{color:#ff3344;border-color:#ff3344;animation:sttPulse 1.2s ease-in-out infinite}
+@keyframes sttPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,51,68,0.6)}50%{box-shadow:0 0 0 6px rgba(255,51,68,0)}}
+#osc-status{font-size:10px;padding:3px 9px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
 #osc-status.on{background:#14532d;color:#4ade80}
 #osc-status.off{background:#1e293b;color:#555}
-#deck-bar{background:#0a0a0a;border-bottom:1px solid #1a1a1a;padding:6px 18px;display:flex;gap:12px;align-items:center;flex-shrink:0;min-height:34px}
-.deck-pill{font-size:10px;padding:3px 10px;border-radius:12px;letter-spacing:1px;text-transform:uppercase;border:1px solid #222;color:#444}
-.deck-pill.loaded{border-color:#555;color:#888;background:#1a1a1a}
-.deck-pill.playing{border-color:#e63946;color:#e63946;background:#1a0808;box-shadow:0 0 6px #e6394644}
-#deck-msg{color:#555;font-size:11px;flex:1}
-#swap-btn{background:#1a1a1a;color:#777;border:1px solid #333;padding:3px 10px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:1px}
-#swap-btn:hover{border-color:#888;color:#ccc;background:#222}
-.panic-btn{border:none;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;transition:opacity .1s}
-#save-btn{background:#7f1d1d;color:#fca5a5}#save-btn:hover{background:#991b1b}
-#surprise-btn{background:#1e3a5f;color:#93c5fd}#surprise-btn:hover{background:#1d4ed8}
-#show-btn{background:#1a1a1a;color:#a78bfa;border:1px solid #3b2d6e;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px}
-#show-btn:hover{background:#1e1b40;border-color:#7c3aed}
-#show-btn.filtered{background:#1e1b40;color:#c4b5fd;border-color:#7c3aed;box-shadow:0 0 6px #7c3aed44}
-/* Show Config Modal */
-#show-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:flex-start;justify-content:center;padding-top:60px}
+#deck-bar{background:var(--deck-bg);border-bottom:1px solid var(--deck-bdr);padding:6px 18px;display:flex;gap:10px;align-items:center;flex-shrink:0;min-height:34px;flex-wrap:wrap}
+.deck-pill{font-size:10px;padding:3px 10px;border-radius:var(--btn-r);letter-spacing:1px;text-transform:uppercase;border:1px solid var(--pill-bdr);color:var(--pill-text);font-family:var(--lbl-font)}
+.deck-pill.loaded{border-color:#555;color:#888;background:var(--pill-loaded-bg)}
+.deck-pill.playing{border-color:var(--accent);color:var(--accent);background:var(--anchor-bg)}
+#deck-msg{color:var(--text3);font-size:11px;flex:1}
+#swap-btn{background:var(--swap-bg);color:var(--swap-text);border:1px solid var(--swap-bdr);padding:3px 10px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;flex-shrink:0}
+#swap-btn:hover{border-color:var(--text2);color:var(--text)}
+.panic-btn{border:none;padding:5px 13px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;transition:opacity .1s;text-transform:uppercase;flex-shrink:0}
+#save-btn{background:var(--save-bg);color:var(--save-text)}
+#save-btn:hover{opacity:.85}
+#surprise-btn{background:var(--surp-bg);color:var(--surp-text)}
+#surprise-btn:hover{opacity:.85}
+#show-btn{background:var(--show-bg);color:var(--show-text);border:1px solid var(--show-bdr);padding:5px 13px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;text-transform:uppercase;flex-shrink:0}
+#show-btn:hover{opacity:.85}
+#show-btn.filtered{background:var(--show-f-bg);color:var(--show-f-text);border-color:var(--show-f-bdr)}
+#setlist-btn{background:var(--sl-bg);color:var(--sl-text);border:1px solid var(--sl-bdr);padding:5px 13px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;text-transform:uppercase;flex-shrink:0}
+#setlist-btn:hover{opacity:.85}
+#setlist-btn.has-tracks{background:var(--sl-on-bg);color:var(--sl-on-text);border-color:var(--sl-on-bdr)}
+/* ── Modals ── */
+#show-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding-top:60px}
 #show-modal-overlay.open{display:flex}
-#show-modal{background:#0d0d0d;border:1px solid #2d2d2d;border-radius:6px;padding:20px 24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;font-size:12px}
-#show-modal h2{color:#c4b5fd;font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:0 0 16px;font-weight:600}
+#show-modal{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:20px 24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;font-size:12px}
+#show-modal h2{color:var(--col3);font-family:var(--lbl-font);font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:0 0 16px;font-weight:600}
 .show-profiles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.profile-btn{background:#111;color:#888;border:1px solid #2a2a2a;padding:5px 14px;border-radius:12px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:.5px;transition:all .1s}
-.profile-btn:hover{border-color:#7c3aed;color:#c4b5fd}
-.profile-btn.active{background:#1e1b40;color:#c4b5fd;border-color:#7c3aed}
+.profile-btn{background:var(--bg4);color:var(--text2);border:1px solid var(--border2);padding:5px 14px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;letter-spacing:.5px;transition:all .1s;text-transform:uppercase}
+.profile-btn:hover{border-color:var(--col3);color:var(--col3)}
+.profile-btn.active{color:var(--col3);border-color:var(--col3)}
 .genre-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:16px}
-.genre-chk{display:flex;align-items:center;gap:6px;cursor:pointer;color:#888;font-size:11px;padding:4px 6px;border-radius:3px}
-.genre-chk:hover{background:#1a1a1a;color:#ccc}
-.genre-chk input{accent-color:#7c3aed;cursor:pointer}
-.genre-chk.checked{color:#ccc}
-#show-apply{background:#3b2d6e;color:#c4b5fd;border:1px solid #7c3aed;padding:7px 20px;border-radius:3px;font-family:inherit;font-size:12px;cursor:pointer;font-weight:bold;letter-spacing:1px;width:100%}
-#show-apply:hover{background:#4c1d95}
-/* Setlist modal */
-#setlist-btn{background:#1a1a1a;color:#6ee7b7;border:1px solid #065f46;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px}
-#setlist-btn:hover{background:#064e3b;border-color:#34d399}
-#setlist-btn.has-tracks{background:#064e3b;color:#6ee7b7;border-color:#34d399;box-shadow:0 0 6px #34d39944}
-#reset-btn{background:#1a1a1a;color:#f87171;border:1px solid #7f1d1d;padding:5px 13px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:1px}
-#reset-btn:hover{background:#450a0a;border-color:#ef4444}
+.genre-chk{display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text2);font-size:11px;padding:4px 6px;border-radius:3px}
+.genre-chk:hover{background:var(--bg4);color:var(--text)}
+.genre-chk input{accent-color:var(--col3);cursor:pointer}
+.genre-chk.checked{color:var(--text)}
+#show-apply{background:var(--col3);color:#000;border:none;padding:7px 20px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:12px;cursor:pointer;font-weight:bold;letter-spacing:1px;width:100%;text-transform:uppercase}
+#show-apply:hover{opacity:.85}
 #setlist-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding-top:60px}
 #setlist-overlay.open{display:flex}
-#setlist-modal{background:#0d0d0d;border:1px solid #2d2d2d;border-radius:6px;padding:20px 24px;width:560px;max-width:90vw;max-height:80vh;overflow-y:auto;font-size:12px}
-#setlist-modal h2{color:#6ee7b7;font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:0 0 4px;font-weight:600}
-#setlist-subtitle{color:#555;font-size:11px;margin-bottom:16px}
+#setlist-modal{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:20px 24px;width:560px;max-width:90vw;max-height:80vh;overflow-y:auto;font-size:12px}
+#setlist-modal h2{color:var(--sl-on-text);font-family:var(--lbl-font);font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:0 0 4px;font-weight:600}
+#setlist-subtitle{color:var(--text3);font-size:11px;margin-bottom:16px}
 #setlist-list{list-style:none;padding:0;margin:0 0 14px}
-#setlist-list li{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid #1a1a1a}
-#setlist-list .sl-num{color:#444;min-width:22px;text-align:right;font-size:10px}
-#setlist-list .sl-time{color:#555;font-size:10px;min-width:38px}
-#setlist-list .sl-artist{color:#ccc;font-weight:600}
-#setlist-list .sl-title{color:#888}
-#setlist-list .sl-genre{color:#555;font-size:10px;margin-left:auto}
-#setlist-empty{color:#555;font-style:italic;padding:20px 0;text-align:center}
-.setlist-actions{display:flex;gap:8px}
-#setlist-export-btn{flex:1;background:#064e3b;color:#6ee7b7;border:1px solid #065f46;padding:7px 14px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px}
-#setlist-export-btn:hover{background:#065f46}
-#setlist-newwin-btn{background:#111;color:#888;border:1px solid #2a2a2a;padding:7px 14px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:.5px}
-#setlist-newwin-btn:hover{border-color:#888;color:#ccc}
-/* ── Light mode overrides ── */
-body.light #deck-bar{background:#ddd8d0;border-bottom-color:#b8b3ac}
-body.light #osc-status.off{background:#d0ccc5;color:#777}
-body.light .deck-pill{border-color:#b8b3ac;color:#666}
-body.light .deck-pill.loaded{border-color:#888;color:#444;background:#d8d3cc}
-body.light #deck-msg{color:#666}
-body.light #swap-btn{background:#d8d3cc;color:#444;border-color:#b0ab a4}
-body.light #swap-btn:hover{background:#c8c3bc;color:#222}
-body.light #search-wrap{background:#e8e4de;border-bottom-color:#c8c3bc}
-body.light #q{background:#f5f2ee;color:#222;border-color:#b8b3ac}
-body.light #results{background:#ebe7e1;border-color:#b8b3ac}
-body.light .r{border-bottom-color:#d8d3cc}.body.light .r:hover{background:#ddd8d0}
-body.light .r .ra{color:#555}.body.light .r .rt{color:#111}
-body.light #cols{background:#c8c3bc}
-body.light .col{background:#ede9e3}
-body.light .col-hdr{border-bottom-color:#d8d3cc}
-body.light #c1 .col-hdr{color:#c0392b}
-body.light #c2 .col-hdr{color:#d4650a}
-body.light #c3 .col-hdr{color:#1a7fa0}
-body.light .anchor-box{background:#f5ddd8;border-color:#c0392b}
-body.light .anchor-box .an .aa{color:#c0392b}
-body.light .anchor-box .an .at{color:#111}
-body.light .tk{border-color:#d8d3cc;background:#ede9e3}
-body.light .tk:hover{border-color:#999;background:#e0dbd4}
-body.light .tk.sel{border-color:#d4650a;background:#fff0e0}
-body.light .tk .ta{color:#444}.body.light .tk .tt{color:#111}
-body.light .bpm{color:#b85a00}
-body.light .key{color:#1a6080}
-body.light .gen{color:#555}
-body.light .scr{color:#2a7a3a}
-body.light .lyric-summary{color:#777}
-body.light .meta{color:#555}
-body.light .bg-dest{color:#1a7fa0;border-left-color:#1a7fa0}
-body.light .empty{color:#888}
-body.light #rescue-box{background:#ede9e3;border-color:#c8c3bc}
-body.light #activity-bar{background:#ddd8d0;border-bottom-color:#c8c3bc}
-body.light .act-label{color:#b85a00}
-body.light .act-track{color:#333}
-body.light .act-bar-wrap{background:#c8c3bc}
-body.light #show-modal{background:#ebe7e1;border-color:#c8c3bc}
-body.light .profile-btn{background:#e2ddd7;color:#444;border-color:#c8c3bc}
-body.light .genre-chk{color:#555}
-body.light .genre-chk:hover{background:#d8d3cc;color:#222}
+#setlist-list li{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)}
+#setlist-list .sl-num{color:var(--text4);min-width:22px;text-align:right;font-size:10px}
+#setlist-list .sl-time{color:var(--text3);font-size:10px;min-width:38px}
+#setlist-list .sl-artist{color:var(--text);font-weight:600}
+#setlist-list .sl-title{color:var(--text2)}
+#setlist-list .sl-genre{color:var(--text3);font-size:10px;margin-left:auto}
+#setlist-empty{color:var(--text3);font-style:italic;padding:20px 0;text-align:center}
+.setlist-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#setlist-export-btn{flex:1;background:var(--sl-on-bg);color:var(--sl-on-text);border:1px solid var(--sl-on-bdr);padding:7px 14px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
+#setlist-export-btn:hover{opacity:.85}
+#setlist-newwin-btn{background:var(--bg4);color:var(--text2);border:1px solid var(--border2);padding:7px 14px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase}
+#setlist-newwin-btn:hover{color:var(--text);border-color:var(--text2)}
+#setlist-reset-btn{background:var(--rst-bg);color:var(--rst-text);border:1px solid var(--rst-bdr);padding:7px 14px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:11px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
+#setlist-reset-btn:hover{opacity:.85}
+/* ── Structure ── */
 #rescue-box{display:none!important}
-#rescue-box .r-label{font-size:9px;letter-spacing:2px;color:#666;margin-bottom:5px;text-transform:uppercase}
+#rescue-box .r-label{font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:5px;text-transform:uppercase}
 #rescue-box .r-track{font-size:13px;cursor:pointer}
-#rescue-box .r-track .ra{color:#ccc}#rescue-box .r-track .rt{color:#fff;font-weight:bold}
-#search-wrap{background:#161616;border-bottom:1px solid #222;padding:8px 18px;flex-shrink:0;position:relative}
-#q{width:100%;background:#1e1e1e;color:#eee;border:1px solid #333;padding:8px 13px;font-size:14px;font-family:inherit;border-radius:3px}
-#q:focus{outline:none;border-color:#e63946}
-#results{position:absolute;left:18px;right:18px;background:#1a1a1a;border:1px solid #333;border-top:none;z-index:100;max-height:220px;overflow-y:auto;display:none}
-.r{padding:8px 12px;cursor:pointer;border-bottom:1px solid #1f1f1f;display:flex;align-items:baseline;gap:10px}
-.r:hover{background:#222}
-.r .ra{color:#bbb}.r .rt{color:#fff;font-weight:bold}
-#cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:#222;flex:1;overflow:hidden}
-.col{background:#111;display:flex;flex-direction:column;overflow:hidden}
-.col-hdr{padding:9px 14px;font-size:10px;letter-spacing:3px;text-transform:uppercase;border-bottom:1px solid #1f1f1f;flex-shrink:0}
-#c1 .col-hdr{color:#e63946}#c2 .col-hdr{color:#f4a261}#c3 .col-hdr{color:#4cc9f0}
+#rescue-box .r-track .ra{color:var(--text2)}#rescue-box .r-track .rt{color:var(--text);font-weight:bold}
+#search-wrap{background:var(--srch-bg);border-bottom:1px solid var(--border);padding:8px 18px;flex-shrink:0;position:relative}
+#q{width:100%;background:var(--inp-bg);color:var(--text);border:1px solid var(--inp-bdr);padding:8px 13px;font-size:14px;font-family:inherit;border-radius:3px}
+#q:focus{outline:none;border-color:var(--accent)}
+#results{position:absolute;left:18px;right:18px;background:var(--res-bg);border:1px solid var(--inp-bdr);border-top:none;z-index:100;max-height:220px;overflow-y:auto;display:none}
+.r{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:10px}
+.r:hover{background:var(--bg4)}
+.r .ra{color:var(--text2)}.r .rt{color:var(--text);font-weight:bold}
+#cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border2);flex:1;overflow:hidden}
+.col{background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+.col-hdr{padding:9px 14px;font-size:10px;letter-spacing:3px;text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0;font-family:var(--lbl-font)}
+#c1 .col-hdr{color:var(--col1)}#c2 .col-hdr{color:var(--col2)}#c3 .col-hdr{color:var(--col3)}
 .col-body{overflow-y:auto;flex:1;padding:10px}
-.anchor-box{background:#1a0808;border:1px solid #e63946;border-radius:4px;padding:12px}
-.anchor-box .deck-tag{font-size:9px;color:#e63946;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;opacity:0.7}
+.anchor-box{position:relative;background:var(--anchor-bg);border:1px solid var(--anchor-bdr);border-radius:4px;padding:12px}
+.anchor-box .anc-art{float:right;width:56px;height:56px;object-fit:cover;border-radius:4px;margin:0 0 8px 12px;opacity:0.9}
+.anchor-box .deck-tag{font-size:9px;color:var(--anchor-col);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;opacity:0.7}
 .anchor-box .an{font-size:14px;margin-bottom:5px}
-.anchor-box .an .aa{color:#e63946}.anchor-box .an .at{color:#fff}
-.tk{padding:9px 10px;margin-bottom:5px;border-radius:3px;cursor:pointer;border:1px solid #1e1e1e}
-.tk:hover{border-color:#444;background:#181818}
-.tk.sel{border-color:#f4a261;background:#1a1000}
-.tk .tn{margin-bottom:4px}.tk .ta{color:#ccc}.tk .tt{color:#fff}
+.anchor-box .an .aa{color:var(--anchor-col)}.anchor-box .an .at{color:var(--text)}
+.tk{position:relative;padding:9px 10px;margin-bottom:5px;border-radius:3px;cursor:pointer;border:1px solid var(--border)}
+.tk:hover{border-color:var(--border2);background:var(--bg4)}
+.tk.sel{border-color:var(--col2);background:var(--card-sel)}
+.tk .tn{margin-bottom:4px}.tk .ta{color:var(--text2)}.tk .tt{color:var(--text)}
 .meta{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;margin-top:3px}
-.bpm{color:#f4a261}.key{color:#a8dadc}.gen{color:#aaa}.scr{color:#4a9}.sts{color:#ffd700;letter-spacing:-1px}
+.bpm{color:var(--bpm)}.key{color:var(--key)}.gen{color:var(--gen)}.scr{color:var(--scr)}.sts{color:#ffd700;letter-spacing:-1px}
 .rep-convicted{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#450a0a;color:#f87171;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
-.lyric-summary{font-size:11px;color:#8a8fa8;font-style:italic;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.instr-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#1a1b3a;color:#a5b4fc;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px;border:1px solid #4338ca44}
+.tk.instrumental{border-left:3px solid #818cf8}
+.anchor-box.instrumental{border-left:3px solid #818cf8}
+body.passthrough .instr-badge{background:#000;color:#a5b4fc;border-color:#4338ca}
+body.passthrough .tk.instrumental{border-left-color:#818cf8;border-left-width:3px}
+body.passthrough .anchor-box.instrumental{border-left:3px solid #818cf8}
+body.day .instr-badge{background:#e6e4f0;color:#5b4cc9;border-color:#5b4cc9}
+body.lcars .instr-badge{background:#9999CC;color:#000;border:none;border-radius:20px;font-family:'Oswald',sans-serif}
+body.borg .instr-badge{background:#000;color:#00FFFF;border:1px dashed #00AAAA}
+.lyric-summary{font-size:11px;color:var(--lyric);font-style:italic;margin-top:3px;white-space:normal;overflow-wrap:break-word;cursor:default}
+#lyr-tooltip{display:none;position:fixed;z-index:9999;pointer-events:none}
+#lyr-tooltip .tk{zoom:2;min-width:220px;max-width:260px;cursor:default!important;border-color:#444!important;background:#181818!important;margin-bottom:0!important;box-shadow:0 8px 32px rgba(0,0,0,.8)}
+body.day #lyr-tooltip .tk{background:#e8e3dd!important;border-color:#aaa!important}
+body.lcars #lyr-tooltip .tk{background:#0a0800!important;border-color:#FF990033!important}
+body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!important}
 .tx{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:bold;letter-spacing:1px;text-transform:uppercase}
-.tx-beat{background:#14532d;color:#4ade80}.tx-frag{background:#713f12;color:#facc15}
-.tx-beatfx{background:#7c2d12;color:#fb923c}.tx-blend{background:#164e63;color:#a8dadc}
-.tx-stem{background:#701a75;color:#e879f9}.tx-loop{background:#4a1d96;color:#c084fc}
-.tx-efx{background:#7f1d1d;color:#f87171}.tx-cut{background:#1e293b;color:#94a3b8}
+.tx-beat{background:var(--tx-beat);color:var(--tx-beat-t)}.tx-frag{background:var(--tx-frag);color:var(--tx-frag-t)}
+.tx-beatfx{background:var(--tx-fx);color:var(--tx-fx-t)}.tx-blend{background:var(--tx-blend);color:var(--tx-blend-t)}
+.tx-stem{background:var(--tx-stem);color:var(--tx-stem-t)}.tx-loop{background:var(--tx-loop);color:var(--tx-loop-t)}
+.tx-efx{background:var(--tx-efx);color:var(--tx-efx-t)}.tx-cut{background:var(--tx-cut);color:var(--tx-cut-t)}
 .bg{margin-bottom:12px}
-.bg-dest{font-size:10px;color:#4cc9f0;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid #4cc9f0}
-.empty{color:#666;padding:16px;font-size:12px;text-align:center;line-height:1.8}
+.bg-dest{font-size:10px;color:var(--col3);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid var(--col3)}
+.empty{color:var(--text3);padding:16px;font-size:12px;text-align:center;line-height:1.8}
 .deck-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-.dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid #1e1e1e;background:#141414;transition:border-color .15s}
-.dc:hover{border-color:#444;background:#1a1a1a}
-.dc.dc-idle{border-color:#2a2a2a;color:#777}
-.dc.dc-loaded{border-color:#444;background:#161616}
-.dc.dc-playing{border-color:#e63946;background:#1a0808;box-shadow:0 0 8px #e6394633}
-.dc .dc-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;color:#777}
-.dc.dc-loaded .dc-label{color:#999}
-.dc.dc-playing .dc-label{color:#e63946}
+.dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--card-bg);transition:border-color .15s}
+.dc:hover{border-color:var(--border2);background:var(--bg4)}
+.dc.dc-idle{border-color:var(--border);color:var(--text3)}
+.dc.dc-loaded{border-color:var(--border2);background:var(--bg4)}
+.dc.dc-playing{border-color:var(--dc-play-bdr);background:var(--dc-play-bg);box-shadow:0 0 8px var(--dc-play-glow)}
+.dc .dc-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;color:var(--text3);font-family:var(--lbl-font)}
+.dc.dc-loaded .dc-label{color:var(--text2)}
+.dc.dc-playing .dc-label{color:var(--accent)}
 .dc .dc-name{font-size:12px;line-height:1.4}
-.dc .dc-artist{color:#ccc}
-.dc .dc-title{color:#fff}
-.dc .dc-sep{color:#555}
-.dc .dc-meta{font-size:10px;color:#888;margin-top:3px}
-.dc.dc-loaded .dc-meta{color:#aaa}
-.dc .dc-empty{color:#777;font-size:11px;font-style:italic}
-#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;color:#ccc;border:1px solid #444;padding:6px 16px;border-radius:4px;font-size:11px;letter-spacing:1px;opacity:0;transition:opacity .15s;pointer-events:none;z-index:999}
+.dc .dc-artist{color:var(--text2)}.dc .dc-title{color:var(--text)}.dc .dc-sep{color:var(--text3)}
+.dc .dc-meta{font-size:10px;color:var(--meta);margin-top:3px}
+.dc.dc-loaded .dc-meta{color:var(--text2)}
+.dc .dc-empty{color:var(--text3);font-size:11px;font-style:italic}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg4);color:var(--text2);border:1px solid var(--border2);padding:6px 16px;border-radius:4px;font-size:11px;letter-spacing:1px;opacity:0;transition:opacity .15s;pointer-events:none;z-index:999}
 #toast.show{opacity:1}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#2a2a2a}
-#activity-bar{background:#0a0a0a;border-bottom:1px solid #1a1a1a;padding:5px 18px;display:none;align-items:center;gap:12px;flex-shrink:0;font-size:11px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg3)}::-webkit-scrollbar-thumb{background:var(--border2)}
+#activity-bar{background:var(--bg3);border-bottom:1px solid var(--border);padding:5px 18px;display:none;align-items:center;gap:12px;flex-shrink:0;font-size:11px}
 #activity-bar.active{display:flex}
-#activity-bar .act-label{color:#4cc9f0;letter-spacing:1px;text-transform:uppercase;font-size:10px;white-space:nowrap;min-width:80px}
-#activity-bar .act-track{flex:1;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
-#activity-bar .act-bar-wrap{width:160px;background:#1a1a1a;border-radius:2px;height:4px;overflow:hidden;flex-shrink:0}
-#activity-bar .act-fill{background:#4cc9f0;height:100%;border-radius:2px;transition:width .4s}
-#activity-bar .act-info{color:#555;white-space:nowrap;font-size:10px}
+#activity-bar .act-label{color:var(--act-col);letter-spacing:1px;text-transform:uppercase;font-size:10px;white-space:nowrap;min-width:80px}
+#activity-bar .act-track{flex:1;color:var(--text2);white-space:normal;overflow-wrap:break-word;font-style:italic;font-size:10px}
+#activity-bar .act-bar-wrap{width:160px;background:var(--border);border-radius:2px;height:4px;overflow:hidden;flex-shrink:0}
+#activity-bar .act-fill{background:var(--act-col);height:100%;border-radius:2px;transition:width .4s}
+#activity-bar .act-info{color:var(--text3);white-space:nowrap;font-size:10px}
+/* ── Album art ── */
+.art-thumb{position:absolute;top:6px;right:6px;width:36px;height:36px;border-radius:3px;object-fit:cover;opacity:0.82;flex-shrink:0}
+.tip-art{width:56px;height:56px;border-radius:4px;object-fit:cover;float:right;margin:0 0 6px 10px;flex-shrink:0}
+/* ══ LCARS structural overrides ══════════════════════════════════════════════ */
+body.lcars #hdr{background:var(--col1);border-bottom:none;padding:0;min-height:40px}
+body.lcars #hdr h1{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:6px;padding:0 20px;color:#000}
+body.lcars #hdr small{font-family:'Oswald',sans-serif;padding-right:12px}
+body.lcars #theme-btn,body.lcars #art-reload-btn,body.lcars #stt-btn{font-family:'Oswald',sans-serif;font-weight:700;background:#CC7700;color:#000;border:none;padding:0 16px;align-self:stretch;border-radius:0}
+body.lcars #theme-btn:hover,body.lcars #art-reload-btn:hover,body.lcars #stt-btn:hover{background:#FFAA00}
+body.lcars #osc-status{font-family:'Oswald',sans-serif;border-radius:0;padding:0 14px;align-self:stretch;display:flex;align-items:center}
+body.lcars #osc-status.on{background:#004400;color:#00FF66}
+body.lcars #osc-status.off{background:#330000;color:#FF3300}
+body.lcars #deck-bar{border-bottom-width:3px}
+body.lcars .deck-pill{border-radius:20px;border-width:2px;font-family:'Oswald',sans-serif;padding:3px 16px}
+body.lcars .deck-pill.playing{color:#000;background:var(--accent)}
+body.lcars #deck-msg{font-family:'Oswald',sans-serif}
+body.lcars #swap-btn,body.lcars .panic-btn,body.lcars #show-btn,body.lcars #setlist-btn{border-radius:20px;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:2px}
+body.lcars #swap-btn{border:2px solid #555}
+body.lcars #show-btn,body.lcars #setlist-btn{border:none}
+body.lcars .col-hdr{font-family:'Oswald',sans-serif;letter-spacing:4px;font-weight:700;padding:10px 18px;border-bottom:none}
+body.lcars #c1 .col-hdr{background:var(--col1);color:#000}
+body.lcars #c2 .col-hdr{background:var(--col2);color:#000}
+body.lcars #c3 .col-hdr{background:var(--col3);color:#000}
+body.lcars .anchor-box{border-width:2px}
+body.lcars .profile-btn{border-radius:20px;font-family:'Oswald',sans-serif}
+body.lcars #show-apply,body.lcars #setlist-export-btn,body.lcars #setlist-reset-btn{border-radius:20px;font-family:'Oswald',sans-serif;border:none}
+body.lcars #setlist-newwin-btn{border-radius:20px;font-family:'Oswald',sans-serif}
+/* ══ Borg structural overrides ═══════════════════════════════════════════════ */
+body.borg,body.borg #q,body.borg #hdr h1{font-family:'Courier New',Courier,monospace}
+body.borg #hdr{border-bottom-width:1px}
+body.borg #osc-status.on{background:transparent;color:#00FF00;border:1px solid #004400}
+body.borg #osc-status.off{background:transparent;color:#003300;border:1px solid #002200}
+body.borg .deck-pill.playing{color:var(--accent);background:transparent}
+body.borg .anchor-box{border-style:dashed}
+body.borg .tk:hover{box-shadow:0 0 6px #00FF0011}
+body.borg .dc.dc-playing{box-shadow:0 0 8px var(--dc-play-glow)}
+/* ══ Passthrough structural overrides (Viture AR HUD mode) ════════════════════ */
+.slot-num{display:none;color:#00FF00;font-family:'Courier New',monospace;font-weight:bold;font-size:14px;margin-right:8px;min-width:22px}
+body.passthrough{background:#000}
+body.passthrough #hdr{padding:3px 10px;border-bottom:0;min-height:22px;gap:8px}
+body.passthrough #hdr h1{font-size:11px;letter-spacing:1.5px;opacity:0.5}
+body.passthrough #tc,
+body.passthrough #osc-status,
+body.passthrough #pill-a,
+body.passthrough #pill-b,
+body.passthrough #deck-msg,
+body.passthrough #show-btn,
+body.passthrough #lyr-tooltip,
+body.passthrough #activity-bar{display:none !important}
+body.passthrough #deck-bar{padding:4px 10px;min-height:26px;border-bottom:0}
+body.passthrough #cols{grid-template-columns:0.75fr 1fr 1fr;gap:8px}
+/* Column 1 — Selected Song + Deck A/B (compact for glasses) */
+body.passthrough #c1 .col-body{padding:0}
+body.passthrough #c1 .empty{display:none}  /* hide "Load a track in Traktor" placeholder */
+body.passthrough .anchor-box{background:#000;border:1px solid #003300;padding:8px 10px;border-radius:3px}
+body.passthrough .anchor-box .deck-tag{color:#00FF00;opacity:0.8;font-size:9px}
+body.passthrough .anchor-box .an{font-size:13px;margin-bottom:3px}
+body.passthrough .anchor-box .an .aa{color:#00FF00}
+body.passthrough .anchor-box .an .at{color:#FFF}
+body.passthrough .anchor-box .anc-art{width:40px;height:40px;margin:0 0 4px 8px}
+body.passthrough .anchor-box .meta{font-size:11px}
+body.passthrough .deck-cards{grid-template-columns:1fr;gap:4px;margin-top:6px}
+body.passthrough .dc{background:#000;border:1px solid #003300;padding:6px 8px;border-radius:3px;position:relative}
+body.passthrough .dc-loaded{border-color:#00AA00}
+body.passthrough .dc-playing{border-color:#00FF00;background:#001500;box-shadow:0 0 6px #00FF0033}
+body.passthrough .dc .dc-label{color:#00FF00;font-size:9px;letter-spacing:2px}
+body.passthrough .dc .dc-name{font-size:12px;line-height:1.2}
+body.passthrough .dc .dc-meta{font-size:10px}
+.dc-playing-badge{display:inline-block;color:#00FF00;font-weight:bold;font-size:10px;letter-spacing:1px;margin-left:6px;padding:1px 5px;border:1px solid #00FF00;border-radius:2px;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.55}}
+body.passthrough .dc .dc-artist{color:#00FF00}
+body.passthrough .dc .dc-title{color:#FFF}
+body.passthrough .dc .dc-meta{color:#88FF88;font-size:11px;opacity:0.8}
+body.passthrough .dc-empty{color:#004400;font-size:11px}
+body.passthrough .col-hdr{font-size:11px;letter-spacing:2px;opacity:0.7;border-bottom:1px solid #003300;color:#00FF00}
+/* Compressed candidate cards (columns 2 & 3) — tuned for Viture 1920×1200 */
+body.passthrough .tk{background:#000;border:1px solid #003300;padding:5px 8px 5px 42px;font-size:12px;margin-bottom:3px}
+body.passthrough .art-thumb{width:32px;height:32px;left:6px;right:auto;top:6px;opacity:0.8}
+body.passthrough .tk .tn{padding-right:0 !important;font-size:13px;line-height:1.2;margin-bottom:2px}
+body.passthrough .tk.sel{border-color:#00FF00;background:#001500;box-shadow:0 0 8px #00FF0033}
+body.passthrough .tk:hover{border-color:#00AA00}
+body.passthrough .meta{font-size:10px;gap:5px;margin-top:1px}
+body.passthrough .lyric-summary{font-size:10px;color:#88FF88;line-height:1.2;margin-top:2px}
+body.passthrough .col-body{padding:6px 8px;overflow:hidden}
+body.passthrough .slot-num{font-size:12px;margin-right:6px;min-width:18px}
+body.passthrough .bg-dest{font-size:9px;letter-spacing:1.5px;color:#66FF66;margin:6px 0 3px 0;padding-bottom:2px}
+/* Dynamic fit — single-line titles; JS shrinks font until they fit without cutoff */
+body.passthrough .tn,
+body.passthrough .dc-name,
+body.passthrough .anchor-box .an{white-space:nowrap}
+body.passthrough .lyric-summary{white-space:nowrap}
+/* Viewport-level constraints: no scrollbars anywhere */
+html,body.passthrough{overflow:hidden;height:100vh}
+body.passthrough #cols{overflow:hidden;min-height:0;flex:1}
+body.passthrough .col-body{overflow:hidden}
+body.passthrough #q{font-size:15px;padding:6px 10px;background:#000;border:1px solid #003300;color:#00FF00}
+body.passthrough #q::placeholder{color:#005500}
+body.passthrough #q:focus{border-color:#00FF00;box-shadow:0 0 6px #00FF0044}
+body.passthrough .slot-num{display:inline-block}
+body.passthrough #theme-btn,
+body.passthrough #art-reload-btn,
+body.passthrough #stt-btn{font-size:11px;padding:2px 6px;border-color:#003300;color:#00FF00}
+body.passthrough #stt-btn.listening{color:#ff3344;border-color:#ff3344}
+body.passthrough .panic-btn,
+body.passthrough #swap-btn,
+body.passthrough #setlist-btn{background:#000;color:#00FF00;border:1px solid #003300;padding:4px 10px;font-size:11px}
+body.passthrough .panic-btn:hover,
+body.passthrough #swap-btn:hover,
+body.passthrough #setlist-btn:hover{background:#001500;border-color:#00FF00}
+/* ── Passthrough layout for Viture 1920×1200 ─────────────────────────────── */
+#deck-strip,#selected-strip{display:none}  /* strips retired — all in col 1 */
+body.passthrough #deck-strip,
+body.passthrough #selected-strip{display:none !important}
+/* Hide SETLIST in passthrough — don't need it mid-show */
+body.passthrough #setlist-btn{display:none !important}
+/* Clamp UI to Viture Luma Ultra dimensions; center if display is larger */
+body.passthrough{display:flex;flex-direction:column;height:100vh;max-width:1920px;max-height:1200px;margin:0 auto}
+body.passthrough #hdr        {flex-shrink:0}
+body.passthrough #cols       {flex:1;min-height:0;grid-template-columns:0.8fr 1fr 1fr;gap:8px;overflow:hidden}
+body.passthrough #search-wrap{flex-shrink:0;padding:4px 10px;order:5}
+body.passthrough #deck-bar   {flex-shrink:0;border-top:0;order:6}
+/* Column 1 (Selected Song + big card + decks at bottom) */
+body.passthrough #c1          {display:flex;flex-direction:column;min-height:0}
+body.passthrough #c1 .col-hdr {flex-shrink:0}
+body.passthrough #c1 .col-body{flex:1;display:flex;flex-direction:column;min-height:0;gap:8px}
+/* Big detailed anchor card fills the vertical middle of col 1 */
+body.passthrough .anchor-box{flex:1;display:flex;flex-direction:column;padding:10px 12px;min-height:0;overflow:hidden}
+body.passthrough .anchor-box .deck-tag{font-size:9px;letter-spacing:2px;margin-bottom:6px;flex-shrink:0}
+body.passthrough .anchor-box .anc-art{float:none;width:100%;height:auto;max-height:40%;object-fit:contain;margin:0 0 8px 0;align-self:center}
+body.passthrough .anchor-box .an{font-size:15px;margin-bottom:6px;flex-shrink:0}
+body.passthrough .anchor-box .meta{font-size:12px;flex-wrap:wrap;margin-top:4px;flex-shrink:0}
+body.passthrough .anchor-box .lyric-summary{color:#88FF88;margin-top:6px;line-height:1.35;flex:1;min-height:0;overflow:hidden;white-space:normal;text-align:justify;text-justify:inter-word}
+.size-justified{text-align:justify;text-justify:inter-word}
+body.passthrough .anchor-box .rep-convicted,
+body.passthrough .anchor-box .rep-accused,
+body.passthrough .anchor-box .rep-settled,
+body.passthrough .anchor-box .lyric-flag{display:inline-block;margin:3px 3px 0 0}
+/* Decks: side-by-side at the bottom of col 1, above action buttons */
+body.passthrough .deck-cards{grid-template-columns:1fr 1fr !important;gap:6px;margin-top:auto;flex-shrink:0}
+body.passthrough .dc{padding:6px 8px}
+body.passthrough .dc .dc-label{font-size:9px}
+body.passthrough .dc .dc-name{font-size:11px}
+body.passthrough .dc .dc-meta{font-size:10px}
 </style>
 </head>
 <body>
 <div id="toast"></div>
+<div id="lyr-tooltip"></div>
 <div id="hdr">
   <h1>♪ DJ Block Planner</h1>
   <small id="tc">loading…</small>
   <span id="osc-status" class="off">OSC OFF</span>
-  <button id="theme-btn" onclick="toggleTheme()" title="Switch between dark (indoor) and light (outdoor) mode">☀</button>
+  <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg → Passthrough">🌙</button>
+  <button id="art-reload-btn" onclick="reloadArt()" title="Reload album art index (after Syncthing sync)">🖼</button>
+  <button id="stt-btn" onclick="toggleSTT()" title="Toggle voice recognition (Web Speech API). Continuous mode — speech goes into search box.">🎤</button>
 </div>
+<!-- Passthrough-only strips (hidden in all other themes via CSS) -->
+<div id="deck-strip"></div>
+<div id="selected-strip"></div>
 <div id="deck-bar">
   <span class="deck-pill" id="pill-a">DECK A</span>
   <span class="deck-pill" id="pill-b">DECK B</span>
@@ -1372,7 +1678,6 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
   <button class="panic-btn" id="surprise-btn" onclick="rescueMe('surprise')" title="Highly rated track you haven't played tonight">✨ Surprise Me</button>
   <button id="show-btn" onclick="openShowConfig()" title="Configure show genre filter">🎛 Show Setup</button>
   <button id="setlist-btn" onclick="openSetlist()" title="View played tracks and export setlist">📋 Setlist</button>
-  <button id="reset-btn" onclick="resetShow()" title="Clear played history for a fresh show">↺ Reset Show</button>
 </div>
 <!-- Show Config Modal -->
 <div id="show-modal-overlay" onclick="closeShowConfig(event)">
@@ -1393,6 +1698,7 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
     <div class="setlist-actions">
       <button id="setlist-export-btn" onclick="exportSetlist()">⬇ Copy for Social Media</button>
       <button id="setlist-newwin-btn" onclick="window.open('/setlist','_blank')">↗ Open in New Tab</button>
+      <button id="setlist-reset-btn" onclick="resetShow()">↺ Reset Show</button>
     </div>
   </div>
 </div>
@@ -1413,7 +1719,7 @@ body.light .genre-chk:hover{background:#d8d3cc;color:#222}
 </div>
 <div id="cols">
   <div class="col" id="c1">
-    <div class="col-hdr">① Now Playing</div>
+    <div class="col-hdr">① Selected Song</div>
     <div class="col-body" id="b1"><div class="empty">Load a track in Traktor<br>— or search above.</div></div>
   </div>
   <div class="col" id="c2">
@@ -1431,17 +1737,173 @@ let SR=[],S2=[],anchor=null,slot2=null,oscActive=false;
 let deckTracks={a:null,b:null};
 let deckPlaying={a:false,b:false};
 
-// ── Theme toggle (dark ↔ light) ───────────────────────────────────────────────
+// ── Theme cycle (Night → Day → LCARS → Borg) ─────────────────────────────────
+const THEMES=['night','day','lcars','borg','passthrough'];
+const THEME_ICONS={night:'🌙',day:'☀',lcars:'🖖',borg:'👾',passthrough:'🕶'};
 (function(){
-  if(localStorage.getItem('theme')==='light'){
-    document.body.classList.add('light');
-    document.getElementById('theme-btn').textContent='🌙';
-  }
+  // Migrate old 2-theme values ('light'/'dark') to new 4-theme names
+  let saved=localStorage.getItem('theme')||'night';
+  if(saved==='light')saved='day';
+  if(saved==='dark' )saved='night';
+  if(!THEMES.includes(saved))saved='night';
+  localStorage.setItem('theme',saved);
+  if(saved!=='night')document.body.classList.add(saved);
+  document.getElementById('theme-btn').textContent=THEME_ICONS[saved];
 })();
 function toggleTheme(){
-  const light=document.body.classList.toggle('light');
-  document.getElementById('theme-btn').textContent=light?'🌙':'☀';
-  localStorage.setItem('theme',light?'light':'dark');
+  const cur=THEMES.find(t=>document.body.classList.contains(t))||'night';
+  const nxt=THEMES[(THEMES.indexOf(cur)+1)%THEMES.length];
+  THEMES.forEach(t=>document.body.classList.remove(t));
+  if(nxt!=='night')document.body.classList.add(nxt);
+  document.getElementById('theme-btn').textContent=THEME_ICONS[nxt];
+  localStorage.setItem('theme',nxt);
+  // Clear any inline font-size the fit routine set (non-passthrough doesn't need it)
+  document.querySelectorAll('[style*="font-size"]').forEach(el=>{el.style.fontSize=''});
+  // Best-effort: resize window to match Viture Luma Ultra native resolution
+  // (only works if this window was opened programmatically; silent no-op otherwise)
+  if(nxt==='passthrough'){
+    try{window.resizeTo(1920,1200);}catch(e){}
+    try{window.moveTo(0,0);}catch(e){}
+  }
+  if(typeof fitPassthrough==='function')fitPassthrough();
+}
+function reloadArt(){
+  const btn=document.getElementById('art-reload-btn');
+  btn.textContent='⏳';
+  fetch('/api/reload-art',{method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{btn.textContent='🖼';console.log('Art index reloaded:',d.count,'entries');})
+    .catch(()=>{btn.textContent='🖼';});
+}
+
+// ── Auto-focus: whenever this window gains focus, cursor → #q ─────────────
+function focusSearch(){
+  const q=document.getElementById('q');
+  if(!q)return;
+  // Don't steal focus from modals or other inputs
+  const modalOpen=document.getElementById('show-modal-overlay')?.classList.contains('show')
+                ||document.getElementById('setlist-overlay')?.classList.contains('show');
+  if(modalOpen)return;
+  const a=document.activeElement;
+  if(a&&a!==document.body&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a!==q)return;
+  q.focus();
+}
+window.addEventListener('focus',focusSearch);
+window.addEventListener('load',()=>setTimeout(focusSearch,100));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(focusSearch,50);});
+// Re-focus after any click that isn't on a button/card/input
+document.addEventListener('click',e=>{
+  if(e.target.closest('input,textarea,button,a,.tk,.dc,.anchor-box,.r'))return;
+  setTimeout(focusSearch,10);
+});
+
+// ── Speech recognition (Web Speech API) ───────────────────────────────────
+// Voice flows straight into #q — keyword commands fire on final transcripts,
+// free-text falls through into the live-search pipeline.
+let _stt=null, _sttOn=false;
+function sttSupported(){return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}
+function sttBtn(){return document.getElementById('stt-btn');}
+function sttPaint(){
+  const b=sttBtn();if(!b)return;
+  b.textContent=_sttOn?'🔴':'🎤';
+  b.classList.toggle('listening',_sttOn);
+}
+function startSTT(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Voice recognition not supported in this browser');return;}
+  if(_stt){try{_stt.stop();}catch(e){}}
+  _stt=new SR();
+  _stt.continuous=true;
+  _stt.interimResults=true;
+  _stt.lang='en-US';
+  _stt.onresult=ev=>{
+    let interim='', final='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const r=ev.results[i];
+      if(r.isFinal)final+=r[0].transcript;else interim+=r[0].transcript;
+    }
+    const q=document.getElementById('q');
+    if(!q)return;
+    if(interim&&!final){q.value=interim.trim();}
+    if(final){
+      const txt=final.trim();
+      q.value=txt;
+      if(tryKeywordCommand(txt)){
+        q.value='';
+        document.getElementById('results').style.display='none';
+        toast(`🎤 ${txt}`);
+      }else{
+        // Not a command — kick the live search pipeline
+        q.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    }
+  };
+  _stt.onerror=ev=>{
+    console.warn('STT error:',ev.error);
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){
+      toast('🎤 Microphone permission denied');
+      _sttOn=false;sttPaint();
+    }
+  };
+  _stt.onend=()=>{
+    // Chrome auto-stops after silence — re-arm if still on
+    if(_sttOn){try{_stt.start();}catch(e){}}
+    else sttPaint();
+  };
+  try{_stt.start();_sttOn=true;sttPaint();toast('🎤 Listening…');}
+  catch(e){toast('🎤 Failed to start: '+e.message);}
+}
+function toggleSTT(){
+  if(!sttSupported()){toast('Voice recognition not supported');return;}
+  if(_sttOn){_sttOn=false;try{_stt.stop();}catch(e){}sttPaint();toast('🎤 Stopped');}
+  else{startSTT();}
+}
+
+// ── Keyword commands — typed (or voice-dictated) into #q, fire on Enter ─────
+const KEYWORD_CMDS=[
+  {re:/^swap\s+decks?$/i,          fn:()=>swapDecks()},
+  {re:/^save\s+me$/i,              fn:()=>rescueMe('save')},
+  {re:/^surprise\s+me$/i,          fn:()=>rescueMe('surprise')},
+  {re:/^open\s+setlist$/i,         fn:()=>openSetlist()},
+  {re:/^open\s+show$/i,            fn:()=>openShowConfig()},
+  {re:/^select\s+(\d{1,2})$/i,     fn:m=>selectSlot2Num(parseInt(m[1])-1)},
+  {re:/^select\s+([ab])$/i,        fn:m=>loadSelectedToDeck(m[1].toLowerCase())},
+];
+function tryKeywordCommand(txt){
+  for(const {re,fn} of KEYWORD_CMDS){
+    const m=txt.match(re);
+    if(m){fn(m);return true;}
+  }
+  return false;
+}
+function selectSlot2Num(idx){
+  if(!S2||idx<0||idx>=S2.length){toast(`No candidate ${idx+1}`);return;}
+  pickSlot2(idx);
+  const t=S2[idx];
+  toast(`Selected [${idx+1}] ${t.artist} — ${t.title}`);
+}
+async function loadSelectedToDeck(letter){
+  if(!slot2){toast('Nothing selected — say "select 1" first');return;}
+  try{
+    const r=await fetch(`/api/load-to-deck?deck=${letter}&path=${encodeURIComponent(slot2.path)}`,{method:'POST'});
+    if(r.ok){toast(`Loaded → Deck ${letter.toUpperCase()}`);}
+    else{toast('Load failed');}
+  }catch(e){toast('Load failed');}
+}
+// ── External text injection — DJ service, OCR, voice-to-text → /api/input-text
+function injectInputText(text){
+  text=(text||'').trim();
+  if(!text)return;
+  const qEl=document.getElementById('q');
+  if(tryKeywordCommand(text)){
+    qEl.value='';
+    document.getElementById('results').style.display='none';
+    toast(`⌨ ${text}`);
+  }else{
+    qEl.value=text;
+    qEl.dispatchEvent(new Event('input',{bubbles:true}));
+    qEl.focus();
+  }
 }
 
 // ── Show Genre Config ─────────────────────────────────────────────────────────
@@ -1671,9 +2133,20 @@ function lyricBadges(t){
     extreme_violence:'🚫 EXTREME VIOLENCE'};
   return t.lyric_flags.map(f=>`<span class="lyric-flag" title="Lyric content warning">${labels[f]||'🚫 FLAGGED'}</span>`).join('');
 }
+function instrBadge(t){
+  return t.is_instrumental?'<span class="instr-badge" title="Instrumental — no vocals">♬ INSTR</span>':'';
+}
 function lyricLine(t){
   if(!t.lyric_summary)return'';
-  return`<div class="lyric-summary" title="${esc(t.lyric_summary)}">${esc(t.lyric_summary)}</div>`;
+  return`<div class="lyric-summary">♪ ${esc(t.lyric_summary)}</div>`;
+}
+function tipCardHtml(t){
+  const lyrHtml=t.lyric_summary
+    ?`<div class="lyric-summary" style="white-space:normal;overflow-wrap:break-word">♪ ${esc(t.lyric_summary)}</div>`
+    :'';
+  const artHtml=t.art_url?`<img class="tip-art" src="${t.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  const cls='tk'+(t.is_instrumental?' instrumental':'');
+  return`<div class="${cls}">${artHtml}<div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${instrBadge(t)}${lyricBadges(t)}</div>${lyrHtml}${meta(t,true)}</div>`;
 }
 function meta(t,showScore){
   return`<div class="meta">
@@ -1682,11 +2155,50 @@ function meta(t,showScore){
     ${showScore?`<span class="scr">${t.score}%</span>`:''}${txBadge(t)}</div>`;
 }
 function tkHtml(t,idx,sel,showScore){
-  return`<div class="tk${sel?' sel':''}" id="s2-${idx}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-    <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+  const slotNum=`<span class="slot-num">[${idx+1}]</span>`;
+  const artHtml=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:'';
+  const cls='tk'+(sel?' sel':'')+(t.is_instrumental?' instrumental':'');
+  return`<div class="${cls}" id="s2-${idx}" data-track="${esc(JSON.stringify(t))}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+    ${artHtml}<div class="tn" style="${t.art_url?'padding-right:42px':''}">${slotNum}<span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${instrBadge(t)}${lyricBadges(t)}</div>
     ${lyricLine(t)}${meta(t,showScore)}</div>`;
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// ── Card tooltip — 2× enlarged version of any card with data-track ───────
+const _tip=document.getElementById('lyr-tooltip');
+let _tipTimer=null;
+let _tipActive=null; // last element that triggered tooltip
+function _showTip(el,e){
+  if(_tipActive===el&&_tip.style.display==='block'){_positionTip(e);return;}
+  clearTimeout(_tipTimer);
+  let t;try{t=JSON.parse(el.dataset.track);}catch(ex){return;}
+  _tip.innerHTML=tipCardHtml(t);
+  _tip.style.display='block';
+  _tipActive=el;
+  _positionTip(e);
+}
+document.addEventListener('mouseover',e=>{
+  const el=e.target.closest('[data-track]');
+  if(!el){clearTimeout(_tipTimer);_tipTimer=setTimeout(()=>{_tip.style.display='none';_tipActive=null;},120);return;}
+  _showTip(el,e);
+});
+document.addEventListener('mousemove',e=>{
+  const el=e.target.closest('[data-track]');
+  if(el) _showTip(el,e);
+});
+document.addEventListener('mouseout',e=>{
+  const going=e.relatedTarget;
+  if(going&&going.closest&&going.closest('[data-track]'))return;
+  _tipTimer=setTimeout(()=>{_tip.style.display='none';_tipActive=null;},120);
+});
+function _positionTip(e){
+  const pad=16, tw=_tip.offsetWidth, th=_tip.offsetHeight;
+  let x=e.clientX+pad, y=e.clientY-th-pad;
+  if(x+tw>window.innerWidth-pad) x=e.clientX-tw-pad;
+  if(y<pad) y=e.clientY+pad+30;
+  _tip.style.left=x+'px';
+  _tip.style.top=y+'px';
+}
 
 let _toastTimer;
 function copyTrack(artist,title){
@@ -1704,13 +2216,16 @@ function dcCardHtml(deck){
   const t=deckTracks[deck];
   const playing=deckPlaying[deck];
   const cls=t?(playing?'dc dc-playing':'dc dc-loaded'):'dc dc-idle';
-  const label=`DECK ${deck.toUpperCase()}${playing?' ▶':''}`;
+  const playBadge=playing?'<span class="dc-playing-badge" title="Playing (lsof detected)">▶ PLAYING</span>':'';
+  const label=`DECK ${deck.toUpperCase()} ${playBadge}`;
+  const dcArt=t&&t.art_url?`<img src="${t.art_url}" style="float:right;width:32px;height:32px;object-fit:cover;border-radius:3px;margin:0 0 4px 8px;opacity:0.85" onerror="this.style.display='none'" alt="">`:''
   const body=t
-    ? `<div class="dc-name"><span class="dc-artist">${esc(t.artist)}</span><span class="dc-sep"> — </span><span class="dc-title">${esc(t.title)}</span></div>
+    ? `${dcArt}<div class="dc-name"><span class="dc-artist">${esc(t.artist)}</span><span class="dc-sep"> — </span><span class="dc-title">${esc(t.title)}</span></div>
        <div class="dc-meta">${t.bpm} BPM · ${t.key||'—'} · ${t.genre||'—'}</div>`
     : `<div class="dc-empty">Nothing loaded</div>`;
   const click=t?`onclick="setDeckAnchor('${deck}')"`:'' ;
-  return`<div class="${cls}" ${click}><div class="dc-label">${label}</div>${body}</div>`;
+  const trackData=t?`data-track="${esc(JSON.stringify(t))}"`:'' ;
+  return`<div class="${cls}" ${click} ${trackData}><div class="dc-label">${label}</div>${body}</div>`;
 }
 
 function renderDeckCards(){
@@ -1725,6 +2240,39 @@ function renderDeckCards(){
     if(ab) ab.insertAdjacentHTML('afterend',html);
     else b1.innerHTML=`<div class="empty">Load a track in Traktor<br>— or search above.</div>`+html;
   }
+  if(typeof fitPassthrough==='function')fitPassthrough();
+}
+
+// ── Passthrough TOP strip: horizontal Deck A / Deck B readout (world zone) ──
+function renderDeckStrip(){
+  const el=document.getElementById('deck-strip');
+  if(!el)return;
+  el.innerHTML=['a','b'].map(d=>{
+    const t=deckTracks[d];
+    const playing=deckPlaying[d];
+    const cls='ds-cell'+(!t?' ds-empty':playing?' ds-playing':'');
+    const label=`DECK ${d.toUpperCase()}`;
+    if(!t)return`<div class="${cls}"><span class="ds-label">${label}</span><span class="ds-title" style="color:#444">—</span></div>`;
+    const art=t.art_url?`<img class="ds-art" src="${t.art_url}" onerror="this.style.display='none'" alt="">`:'';
+    const play=playing?'<span class="ds-play">▶</span>':'';
+    return`<div class="${cls}"><span class="ds-label">${label}</span>${play}${art}<span class="ds-artist">${esc(t.artist)}</span><span class="ds-sep">—</span><span class="ds-title">${esc(t.title)}</span><span class="ds-bpm">${t.bpm||'?'} BPM</span></div>`;
+  }).join('');
+}
+
+// ── Passthrough BOTTOM strip: Selected Song readout (self zone) ──
+function renderSelectedStrip(){
+  const el=document.getElementById('selected-strip');
+  if(!el)return;
+  if(!anchor){
+    el.className='ss-empty';
+    el.innerHTML=`<div class="ss-label">① SELECTED SONG</div><div class="ss-row">Pick one from column ② — say "select 3" or click</div>`;
+    return;
+  }
+  el.className='';
+  const art=anchor.art_url?`<img class="ss-art" src="${anchor.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  const starsStr=typeof stars==='function'?stars(anchor.stars||0):'';
+  el.innerHTML=`<div class="ss-label">① SELECTED SONG</div>
+    <div class="ss-row">${art}<span class="ss-artist">${esc(anchor.artist)}</span><span class="ss-sep">—</span><span class="ss-title">${esc(anchor.title)}</span><span class="ss-meta">${anchor.bpm||'?'} BPM · ${esc(anchor.key||'—')} · ${esc(anchor.genre||'—')} ${starsStr}</span></div>`;
 }
 
 let _rescueTrack=null;
@@ -1734,6 +2282,8 @@ async function rescueMe(mode){
   const t=await fetch(url).then(r=>r.json());
   if(t.error){alert('No candidates found.');return}
   _rescueTrack=t;
+  // Clear search bar — Selected Song now populated by rescue
+  q.value='';res.style.display='none';
   // Load as anchor — fires full suggestion pipeline just like a search pick or deck load
   await loadAnchor(t, null);
   // Flash the rescue label briefly so the Captain knows which button fired it
@@ -1775,6 +2325,7 @@ function connectSSE(){
       return;
     }
     if(d.type==='play_state'){deckPlayState(d.deck,d.playing);return}
+    if(d.type==='input_text'){injectInputText(d.text);return}
     if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist,d.type==='playing');
   };
   es.onerror=()=>{
@@ -1851,6 +2402,17 @@ q.addEventListener('input',()=>{
   if(q.value.trim().length<2){res.style.display='none';return}
   st=setTimeout(()=>doSearch(q.value.trim()),150);
 });
+q.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const txt=q.value.trim();
+    if(tryKeywordCommand(txt)){
+      q.value='';
+      res.style.display='none';
+      clearTimeout(st);
+      e.preventDefault();
+    }
+  }
+});
 document.addEventListener('click',e=>{if(!e.target.closest('#search-wrap'))res.style.display='none'});
 
 async function doSearch(v){
@@ -1870,12 +2432,16 @@ async function setAnchor(i){res.style.display='none';q.value='';await loadAnchor
 // ── Load anchor (shared by OSC + manual) ───────────────────────────────────
 async function loadAnchor(track,deck){
   anchor=track;
-  const deckTag=deck?`<div class="deck-tag">DECK ${deck.toUpperCase()} ▶ NOW PLAYING</div>`:'';
+  const deckTag=deck?`<div class="deck-tag">SELECTED SONG ▸ DECK ${deck.toUpperCase()}</div>`:'<div class="deck-tag">SELECTED SONG</div>';
   // Replace anchor box only; keep deck cards
   const cardsEl=b1.querySelector('.deck-cards');
-  const anchorHtml=`<div class="anchor-box">${deckTag}
+  const ancArt=track.art_url?`<img class="anc-art" src="${track.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  const badges=(repBadge(track)+instrBadge(track)+lyricBadges(track));
+  const badgeRow=badges?`<div class="anchor-badges" style="margin-top:6px">${badges}</div>`:'';
+  const boxCls='anchor-box'+(track.is_instrumental?' instrumental':'');
+  const anchorHtml=`<div class="${boxCls}" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
-    ${meta(track,false)}</div>`;
+    ${meta(track,false)}${badgeRow}${lyricLine(track)}</div>`;
   if(cardsEl){
     const ab=b1.querySelector('.anchor-box');
     if(ab) ab.outerHTML=anchorHtml;
@@ -1893,15 +2459,105 @@ async function loadAnchor(track,deck){
   renderSlot2(0);
   renderSlot3(d.slot3);
   if(S2.length)slot2=S2[0];
+  fitPassthrough();
 }
 
 // ── Slot 2 ──────────────────────────────────────────────────────────────────
 function renderSlot2(selIdx){
   if(!S2.length){b2.innerHTML='<div class="empty">No close matches found</div>';return}
   b2.innerHTML=S2.map((t,i)=>tkHtml(t,i,i===selIdx,true)).join('');
+  fitPassthrough();
 }
+
+// ── Dynamic auto-fit (passthrough only): shrink font-size per line until
+// the text fits without wrapping or being cut off. Also shrinks cards if
+// the vertical total exceeds the column body. Legibility floor = 9px.
+// ── Size-justified text fit ──────────────────────────────────────────────
+// Binary-search the largest font-size where the text's rendered rectangle
+// fits its container with no overflow. Text fills the box end-to-end via
+// text-align:justify for horizontal edges. Used for longer (sentence→paragraph)
+// text blocks where we want them to fill their allotted rectangle exactly.
+function sizeJustify(el, min=8, max=36, tol=0.25){
+  if(!el||!el.textContent.trim())return;
+  // Measure parent context — we want el's content to fit within its current box
+  // Reset so we can measure
+  el.style.fontSize='';
+  const ch=el.clientHeight;
+  const cw=el.clientWidth;
+  if(ch<8||cw<8)return;  // no space, bail
+  // Try max first — if it fits, we're done
+  el.style.fontSize=max+'px';
+  if(el.scrollHeight<=ch+1 && el.scrollWidth<=cw+1)return;
+  // Binary search downward
+  let lo=min, hi=max, best=min;
+  for(let i=0;i<14 && hi-lo>tol;i++){
+    const mid=(lo+hi)/2;
+    el.style.fontSize=mid+'px';
+    if(el.scrollHeight<=ch+1 && el.scrollWidth<=cw+1){best=mid;lo=mid;}
+    else{hi=mid;}
+  }
+  el.style.fontSize=best+'px';
+}
+
+function fitPassthrough(){
+  if(!document.body.classList.contains('passthrough'))return;
+  requestAnimationFrame(()=>{
+    // 1) Horizontal fit — shrink title/summary lines to avoid horizontal overflow
+    const targets=document.querySelectorAll(
+      'body.passthrough .tn, '+
+      'body.passthrough .dc-name, '+
+      'body.passthrough .anchor-box .an, '+
+      'body.passthrough .tk .lyric-summary, '+
+      'body.passthrough #deck-strip .ds-cell, '+
+      'body.passthrough #selected-strip .ss-row'
+    );
+    targets.forEach(el=>{
+      el.style.fontSize='';  // reset
+      const cs=getComputedStyle(el);
+      let fs=parseFloat(cs.fontSize);
+      const minFs=el.classList.contains('lyric-summary')?9:10;
+      let guard=40;
+      while(el.scrollWidth>el.clientWidth+1 && fs>minFs && guard-->0){
+        fs-=0.5;
+        el.style.fontSize=fs+'px';
+      }
+    });
+    // 2) Vertical fit — if any column body overflows, shrink all card fonts a step
+    ['b2','b3'].forEach(id=>{
+      const body=document.getElementById(id);
+      if(!body)return;
+      let guard=12;
+      while(body.scrollHeight>body.clientHeight+1 && guard-->0){
+        const cards=body.querySelectorAll('.tk');
+        let stepped=false;
+        cards.forEach(c=>{
+          const cs=getComputedStyle(c);
+          let fs=parseFloat(cs.fontSize);
+          if(fs>10){c.style.fontSize=(fs-0.5)+'px';stepped=true}
+          const meta=c.querySelector('.meta');
+          if(meta){
+            const mfs=parseFloat(getComputedStyle(meta).fontSize);
+            if(mfs>9){meta.style.fontSize=(mfs-0.5)+'px';stepped=true}
+          }
+        });
+        if(!stepped)break;
+      }
+    });
+    // 3) Size-justified — fill allotted rectangle end-to-end. Runs LAST so
+    //    the container has settled from earlier passes.
+    document.querySelectorAll(
+      'body.passthrough .anchor-box .lyric-summary, '+
+      'body.passthrough .size-justified'
+    ).forEach(el=>sizeJustify(el,10,28));
+  });
+}
+// Refit on window resize
+window.addEventListener('resize',()=>fitPassthrough());
 async function pickSlot2(i){
   slot2=S2[i];renderSlot2(i);
+  // Clear search bar — the selection is made, search context no longer needed
+  const qEl=document.getElementById('q');
+  if(qEl){qEl.value='';document.getElementById('results').style.display='none';}
   b3.innerHTML='<div class="empty">Loading…</div>';
   const d=await fetch('/api/slot3?slot2='+encodeURIComponent(slot2.path)+'&anchor='+encodeURIComponent(anchor.path)).then(r=>r.json());
   renderSlot3(d);
@@ -1912,9 +2568,12 @@ function renderSlot3(groups){
   if(!groups.length){b3.innerHTML='<div class="empty">No bridge candidates</div>';return}
   b3.innerHTML=groups.map(g=>`
     <div class="bg"><div class="bg-dest">→ ${esc(g.destination)}</div>
-    ${g.tracks.map(t=>`<div class="tk" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-      <div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
-      ${lyricLine(t)}${meta(t,true)}</div>`).join('')}</div>`).join('');
+    ${g.tracks.map(t=>{const a=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:''
+      const c='tk'+(t.is_instrumental?' instrumental':'');
+      return`<div class="${c}" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+      ${a}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${instrBadge(t)}${lyricBadges(t)}</div>
+      ${lyricLine(t)}${meta(t,true)}</div>`}).join('')}</div>`).join('');
+  fitPassthrough();
 }
 </script>
 </body>
@@ -1981,7 +2640,7 @@ setInterval(load,15000);
 
 
 def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
-    from flask import Flask, Response, jsonify, request, stream_with_context
+    from flask import Flask, Response, jsonify, request, stream_with_context, send_from_directory
 
     app   = Flask(__name__)
     index = {t.path: t for t in tracks}
@@ -2067,6 +2726,44 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
         osc_state.swap_decks()
         return jsonify({"ok": True})
 
+    @app.route("/api/input-text", methods=["POST"])
+    def input_text():
+        """Inject text into the browser search box as if typed + Enter pressed.
+        Broadcasts via SSE to every connected browser. If the text matches a
+        keyword command (e.g. 'swap decks', 'select 3'), it fires that command;
+        otherwise it drops into the search box and triggers a live search.
+
+        Used by external DJ services — OCR, voice-to-text, remote control.
+        The end goal is full solo-glasses DJing: you talk, the glasses or a
+        bridge app transcribes, that POSTs here, the browser reacts.
+
+        curl -X POST http://localhost:7334/api/input-text \\
+             -H 'Content-Type: application/json' \\
+             -d '{"text":"swap decks"}'
+        """
+        data = request.get_json(silent=True) or {}
+        text = (data.get("text") or request.args.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "missing text"}), 400
+        osc_state.broadcast_input(text)
+        return jsonify({"ok": True, "text": text})
+
+    @app.route("/api/load-to-deck", methods=["POST"])
+    def load_to_deck():
+        """Write a 1-track M3U for the given deck. Mirrors CLI 1-5/q-t shortcut."""
+        deck = request.args.get("deck", "").lower()
+        path = request.args.get("path", "")
+        if deck not in ("a", "b"):
+            return jsonify({"error": "bad deck"}), 400
+        t = index.get(path)
+        if not t:
+            return jsonify({"error": "track not in collection"}), 404
+        SUGGESTIONS_DIR.mkdir(exist_ok=True)
+        out = SUGGESTIONS_DIR / f"deck_{deck}.m3u"
+        label = f"{t.artist} — {t.title}  [{t.bpm:.1f} BPM | {t.key} | {t.genre}]"
+        out.write_text(f"#EXTM3U\n#EXTINF:-1,{label}\n{path}\n", encoding="utf-8")
+        return jsonify({"ok": True, "deck": deck, "path": path})
+
     @app.route("/api/deck-status")
     def deck_status():
         loaded  = osc_state.get_loaded()   # {deck: {title, artist}}
@@ -2129,6 +2826,19 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
             if score > best_score:
                 best_score, best = score, t
         return jsonify(best.to_dict() if best else None)
+
+    @app.route("/art/<filename>")
+    def serve_art(filename):
+        """Serve cached album art JPEG files."""
+        return send_from_directory(ART_DIR, filename)
+
+    @app.route("/api/reload-art", methods=["POST"])
+    def reload_art():
+        """Hot-reload art index without server restart (call while fetch_album_art.py runs)."""
+        global ART_INDEX
+        ART_INDEX = _load_art_index(ART_INDEX_PATH)
+        found = sum(1 for v in ART_INDEX.values() if v)
+        return jsonify({"ok": True, "total": len(ART_INDEX), "found": found})
 
     @app.route("/api/reload-lyrics", methods=["POST"])
     def reload_lyrics():

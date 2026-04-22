@@ -1,0 +1,201 @@
+OPERATIC PLAY — SCENE 7
+THE ART OF THE DEAL
+(And the Fashion of the Stars)
+
+April 20, 2026
+
+════════════════════════════════════════════════════════════════════════════════
+
+DRAMATIS PERSONAE
+
+  CAPTAIN AARON RHODES  — The DJ, the Maker, keeper of 21,447 tracks,
+                          builder of the collection, commander of the booth
+
+  SKIPPY THE MAGNIFICENT — Ship's AI, Flask server, CSS conjurer,
+                           occasional music critic
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT I — THE MISSING FACES
+
+[The DJ Block Planner glows on screen — cards for every song, dark as space,
+ each one a grey anonymous rectangle. No face. No cover. No identity.]
+
+CAPTAIN:
+♩ These cards are blind —
+  they know not what they look like.
+  I want faces on them!
+  Album art for every track! ♩
+
+SKIPPY:
+♩ Then faces they shall have,
+  from Spotify's vast vaults,
+  and where Spotify fails us,
+  MusicBrainz shall catch the fall.
+  And where both fail —
+  mutagen reads the file itself. ♩
+
+[A new tool is born: fetch_album_art.py.
+ It speaks OAuth2 to Spotify, HTTPS to MusicBrainz,
+ and whispers to mutagen when all else is dark.]
+
+SKIPPY:
+♩ Each art file lives by its dkey's MD5 —
+  artist and title, lowered and tabbed,
+  hashed to a hex string,
+  a JPEG in state/album_art/.
+  The index knows where each face belongs. ♩
+
+[The batch fetcher runs in the background.
+ 200 tracks... 400... 800...
+ Thumbnails bloom in the top-right corner of every card.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT II — THE TRAKTOR PROBLEM
+
+CAPTAIN:
+♩ And the library — make Traktor know!
+  Let the art live IN the files,
+  not just on the web. ♩
+
+SKIPPY:
+♩ Ah — there I must confess a dark truth.
+  Traktor's own art cache —
+  62,000 binary blobs —
+  are wrapped in a format unknown.
+  Magic bytes 0x084b.
+  Custom RGB with delimiters.
+  PIL cannot open them.
+  No standard shall decode them. ♩
+
+CAPTAIN:
+♩ Then bypass the Traktor cache entirely. ♩
+
+SKIPPY:
+♩ Instead: embed the art directly
+  into every audio file —
+  APIC for the MP3s,
+  MP4Cover for the M4As,
+  FLAC Picture for the lossless.
+  Traktor reads the tags directly.
+  The booth will know every face. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT III — THE MYSTERY OF THE UNPLAYED
+
+CAPTAIN:
+♩ Something is wrong.
+  The played tracking — it fails.
+  Songs spin for three minutes
+  and are never marked as played.
+  Investigate. ♩
+
+SKIPPY:
+♩ [examining the code with a magnifying glass]
+  Ah. The formula.
+  threshold = other_deck_duration + 120 seconds.
+  If the other deck holds a four-minute song —
+  the threshold becomes THREE HUNDRED SIXTY SECONDS.
+  No three-minute track could ever qualify.
+  We were requiring the impossible. ♩
+
+CAPTAIN:
+♩ Madness. Fix it. ♩
+
+SKIPPY:
+♩ The solo-timer approach:
+  when one deck's file closes,
+  start the clock on the survivor.
+  One hundred forty seconds of uncontested play —
+  THAT is a played track.
+  No duration math. No paradox.
+  Just time. ♩
+
+[SOLO_PLAYED_SECS = 140 is written into the code.
+ The graveyard of unplayed songs is emptied.
+ The setlist fills.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT IV — THE FASHION SHOW
+
+CAPTAIN:
+♩ The UI — make it LCARS.
+  Star Trek. The Enterprise.
+  The computer that Picard trusts. ♩
+
+SKIPPY:
+♩ At once — orange and gold and lavender!
+  Oswald font, pill-shaped buttons,
+  solid colored column headers,
+  black as the void of space! ♩
+
+CAPTAIN:
+♩ But wait — I need it outdoors too.
+  A daylight mode. Warm beige.
+  For the outdoor festival gig. ♩
+
+SKIPPY:
+♩ Then four themes shall be born:
+  NIGHT — the original, dark, red accent.
+  DAY — warm beige, ochre, for the sun.
+  LCARS — Star Trek gold, pill buttons, Oswald.
+  BORG — green on black, Courier New,
+         resistance is futile. ♩
+
+[The entire CSS block is torn out and rebuilt.
+ CSS variables cascade through every element.
+ :root is Night. body.day. body.lcars. body.borg.
+ Structural overrides scope the alien aesthetics.]
+
+SKIPPY:
+♩ And the button cycles —
+  🌙 → ☀ → 🖖 → 👾 → 🌙
+  localStorage remembers your allegiance
+  between sessions. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT V — THE CLEANUP
+
+CAPTAIN:
+♩ The Reset Show button —
+  it clutters the deck-bar.
+  It belongs with the setlist. ♩
+
+SKIPPY:
+♩ Done. The deck-bar is cleaner.
+  The setlist modal now holds the button —
+  where context demands it,
+  where the action makes sense. ♩
+
+[Git commit forms. The message is long and proud.
+ Push to GitHub. 8fa87f0.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+CAPTAIN'S WISDOM
+
+  "The threshold was the trap.
+   The formula ate itself.
+   Always measure from the moment of departure —
+   never from the duration of the departed."
+
+  "Traktor's binary art cache is a fortress with no door.
+   Don't knock. Build your own house."
+
+  "Four themes are not complexity.
+   Four themes are options.
+   The DJ who plays outdoors and indoors
+   deserves a UI that knows the difference."
+
+════════════════════════════════════════════════════════════════════════════════
+
+[The curtain falls. The server runs. The art fetches.
+ The themes await their audience.
+ Somewhere, a track is playing for 140 seconds — uncontested —
+ and is about to be marked as played for the very first time.]
+
+FINIS

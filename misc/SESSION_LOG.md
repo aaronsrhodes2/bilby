@@ -296,3 +296,204 @@ CAPTAIN: Pass to the PC and check in. Going to the show.
 - ~/Documents/Native Instruments/Traktor 4.0.2/collection.nml — 431 tracks: Cues 1/2/8 written
 
 ---
+
+## SESSION 6 — April 19, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Let's even overwrite Comments. I don't care whats there already.
+
+SKIPPY: Understood. Overwriting COMMENT unconditionally. COMMENT2 gets theme + lyric flags + rep tier + song-specific reason. 16,582 summaries written, 3,781 tracks flagged in COMMENT2. Both NMLs valid.
+
+**Key decisions made:**
+- COMMENT always overwritten (previous session preserved existing values; Captain cancelled that policy)
+- COMMENT2 format: `theme | ⚑lyric_flag | ⚑rep:tier (Name) | ⚑song:reason` — pipe-separated, only parts that exist
+- Lyric flags from lyrics_dedup.json flags field; artist rep from misc/reputation_flags.json flags[].artists match; song-specific from song_flags[] in same file
+- Most severe tier wins if artist appears under multiple entries
+
+**Notable moments:**
+- 54 artist reputation entries matched across collection, flagging 1,438 tracks
+- Siouxsie's Arabian Nights gets all three: lyric flag + rep settled + song reason
+- Burzum gets ⚑rep:convicted (Varg Vikernes) on every track
+
+**Files modified:**
+- tools/write_nml_comments.py — new (267 lines)
+- ~/Documents/Native Instruments/Traktor 4.0.2/collection.nml — COMMENT/COMMENT2 written
+- corrected_traktor/collection.nml — COMMENT/COMMENT2 written (gitignored, not committed)
+
+---
+
+## SESSION 7 — April 20, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: Tool worked beautifully. 70% of song choices made with it, no friction. Summaries disappeared from song cards. Duplicates still showing for some songs (Siouxsie). Google Drive for transfer. GitLab vs GitHub?
+
+SKIPPY: Fixed three things: (1) summaries back in song cards — Track now reads COMMENT from NML directly, lyricLine tooltip replaced with larger styled CSS popup; (2) load_tracks now dedupes by artist+title keeping highest bitrate, 23,780→21,526 tracks; (3) dedup_corrected_music.py for actual file cleanup. Google Drive: rclone installed, needs Captain to run rclone config auth. GitLab: keep GitHub for this repo, GitLab MCP fine for Claude Desktop on new projects. Logged "PC as MCP server" as a future project.
+
+**Key decisions made:**
+- lyric_summary falls back to NML COMMENT field if lyrics_index cache is empty
+- Track pool deduped at load time by (artist, title) → highest bitrate wins
+- _song_key() moved above load_tracks() to resolve forward-reference
+- Google Drive via rclone (installed) — auth step requires Captain in terminal
+- Keep GitHub for music project; GitLab MCP is additive, not a migration
+
+**Notable moments:**
+- "The tool worked beautifully" — validation from the floor
+- Arabian Nights had 5+ copies at different bitrates from Stage 2 rename-on-collision
+- ALL 23,780 corrected NML entries show as "missing" — because path resolver has Unicode apostrophe mismatch (`'` vs `'`) in folder names like "NOW Yearbook Extra '81"
+- Captain's aside: "this is going to lead to my PC becoming a full on remote MCP for my mac and my phone" — logged as future project
+
+**Files modified:**
+- stage9_dj_suggest.py — comment field on Track, load_tracks dedup, lyricLine CSS tooltip
+- tools/dedup_corrected_music.py — new
+- tools/write_nml_comments.py — new (from session 6, committed here)
+- misc/FUTURE_TASKS.md — PC as MCP server task logged
+- misc/SESSION_LOG.md — this entry
+
+---
+
+## SESSION 8 — April 20, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: I want to go get all of the correct album art for all of our albums, and I want to integrate it into the song cards in the browser so we can see them there. Especially in the big tooltip.
+
+SKIPPY: Built `tools/fetch_album_art.py` — resumable Spotify-primary / MusicBrainz-fallback / mutagen-embedded-tertiary fetcher. Art stored as `{md5_of_dkey}.jpg` in `state/album_art/`, indexed in `state/album_art_index.json`. Added 36×36px thumbnail top-right of every song card and 56×56px in the 2× hover tooltip. Flask `/art/<filename>` route serves them. Background fetch running; ~800 tracks done.
+
+CAPTAIN: Make sure we add the album art to the Traktor library as well.
+
+SKIPPY: Added `--embed` mode to the fetcher using mutagen — writes APIC tags into MP3/AIFF, MP4Cover into M4A, FLAC Picture into FLAC. Run after fetch completes.
+
+CAPTAIN: I also want to feed the entire UI to be like the LCARS UI from Star Trek TNG. And investigate why played tracking isn't working — any song played for more than 140sec we could consider 'played' safely.
+
+SKIPPY: Played bug found: old threshold was `other_deck_duration + 120s` — if other deck had a 4-min song that's 360s, longer than most tracks. Replaced with solo-timer: 140s after the other deck's file closes = played. LCARS theme initiated as full redesign.
+
+CAPTAIN: Could you also add a daylight theme? Let's do Night / Day / LCARS / Borg as four switchable themes.
+
+SKIPPY: Rebuilt entire CSS as a CSS variable system. `:root` = Night (dark, red accent). `body.day` = warm beige outdoor. `body.lcars` = TNG orange/gold/lavender, Oswald font, pill buttons, solid colored column headers. `body.borg` = green-on-black, Courier New, dashed borders. Theme-cycle button (🌙→☀→🖖→👾) persists via localStorage.
+
+CAPTAIN: Proceed.
+
+SKIPPY: Completed: removed Reset Show from deck-bar, moved it into the setlist modal where it belongs. Committed and pushed the whole session.
+
+**Key decisions made:**
+- Art index keyed by dkey (artist\ttitle lowercased) — consistent with `_song_key()` in main server
+- Traktor binary art cache is proprietary (0x084b magic) — bypassed entirely; embed directly into audio tags
+- Solo-timer approach for played tracking: clean, poll-interval-independent, 140s threshold
+- 4-theme CSS variable architecture: structural overrides scoped under `body.lcars` / `body.borg`
+- Reset Show belongs in the setlist modal, not cluttering the deck-bar
+
+**Notable moments:**
+- Traktor's cached art format is completely proprietary — 62% of tracks had a COVERARTID pointing to useless binary blobs
+- `.gitignore` had `state/*` which silently excluded `album_art_index.json` until we added the exception
+- Old played logic was mathematically guaranteed to miss any song shorter than the other deck's duration + 2min
+
+**Files modified:**
+- `tools/fetch_album_art.py` — new, resumable art fetcher with embed mode
+- `stage9_dj_suggest.py` — album art display, 4-theme CSS, solo played tracking, deck-bar cleanup
+- `state/album_art_index.json` — new, ~800 initial entries
+- `.gitignore` — album_art_index.json exception
+
+---
+
+## SESSION 9 — April 21, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: I don't see the art in the application's song cards.
+
+SKIPPY: Server was running stale code from before the pipeline finished. Restarted it. Keys matched, art served fine. Also found the anchor box and deck status cards had no art at all — separate HTML templates that never got the art treatment. Fixed all three spots: anchor box (56×56 float right), deck pills (32×32), candidate cards already had it.
+
+CAPTAIN: Anything left on the list?
+
+SKIPPY: Mac-side code backlog clear. Housekeeping remaining: memory, session log, operatic play. PC still has STT and cue pass.
+
+CAPTAIN: Proceed.
+
+SKIPPY: Updated project_current_state.md (was listing album art as "Next Planned Feature" — it's now done at 98%). Session log and scene written.
+
+**Key decisions made:**
+- Album art belongs in anchor box, deck pills, candidate cards, AND tooltip — not just the candidate list
+- Memory file was ~1 session stale; consolidated with full current state
+- Mac backlog is genuinely empty; next meaningful work is PC-side or new features
+
+**Notable moments:**
+- Art was working fine API-side on first check — just needed a browser hard refresh
+- `lstrip("/art/")` bug in embed mode — strips character set {/,a,r,t} not the prefix; fixed to `removeprefix`
+- Album propagation: 1,885 tracks got art instantly at startup, no API calls needed
+- ALBUM field in NML is a child element `<ALBUM TITLE="..."/>`, not an ENTRY attribute — classic Traktor quirk
+
+**Files modified:**
+- `stage9_dj_suggest.py` — art in anchor box + deck pills; theme localStorage migration; 🖼 reload button
+- `tools/fetch_album_art.py` — iTunes source, album propagation, lstrip fix
+- `tools/art_pipeline.sh` — automated pipeline
+- `state/album_art_index.json` — 21,189 entries (98% coverage)
+- `memory/project_current_state.md` — full rewrite to current state
+
+---
+
+## SESSION 10 — April 21, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: I want a new theme called "passthrough" — pitch black, for viewing through my Viture AR glasses. Shrink the title, get rid of the red-marked real estate, make the search input accept voice keywords, Show Setup stays in other themes but not here.
+
+SKIPPY: Built the 5th theme in the cycle (🌙→☀→🖖→👾→🕶). Pure `#000` bg, green accent, 2-column candidate layout, hidden deck pills/track-count/OSC status/Show Setup/activity bar/tooltip. Slot 2 candidates get `[1] [2] [3]...` numbered prefixes. Keyword command parser recognises `swap decks` / `save me` / `surprise me` / `select N` / `select a/b` / `open setlist` / `open show` on Enter. New `/api/load-to-deck` endpoint writes single-track M3Us so `select a` mirrors the CLI `1-5` shortcut.
+
+CAPTAIN: We DJ through the glasses alone — voice goes to the glasses, to the phone, to this program, to Traktor MIDI. All via text/voice. Add `/api/input-text` so our DJ service can pipe text in.
+
+SKIPPY: Added `POST /api/input-text` that broadcasts via SSE to the browser, where `injectInputText()` routes through the keyword parser. Voice or OCR bridges POST here; page reacts as if the user typed and pressed Enter.
+
+CAPTAIN: I still want to see Deck A, Deck B, and Now Playing — rename it to "Selected Song". The Selected Song can come from col 2 pick, search, save me, surprise me, or clicking a deck. Add a pulsing ▶ PLAYING badge on whichever deck lsof sees live. Clear the search bar on selection.
+
+SKIPPY: Column 1 restored with rename. Pulsing red-border badge on the active deck. Search auto-clears in `pickSlot2`, `rescueMe`, and `setAnchor`. Art moved to left side of candidate cards for readability.
+
+CAPTAIN: Target is 1920×1200. Fit everything — no scrollbars, no wrapped text, no ellipsis cutoff. Corners for dismissible glance. Bottom is self/user's words. Top is the world. Sides are manipulation — minimise them.
+
+SKIPPY: Wrote `fitPassthrough()` — horizontal pass shrinks each title until scrollWidth≤clientWidth; vertical pass shrinks card fonts until col body fits. Floor 10px titles / 9px meta. `white-space:nowrap` on one-liners; `overflow:hidden` cascade. Added `sizeJustify()` — binary-search the largest font where a paragraph's rendered rectangle fills its container exactly. Applied to the anchor-box lyric summary with `text-align:justify`. Clamped body to `max-width:1920px max-height:1200px margin:0 auto`.
+
+CAPTAIN: Big detailed card for the selected song in col 1. Decks side-by-side at the bottom of col 1, above the action buttons. Remove Setlist button from passthrough. Force window size to Viture.
+
+SKIPPY: Col 1 now: anchor box (flex:1) with full-width art, all meta, rep+lyric+instrumental badges, justified lyric summary — then Deck A / Deck B side-by-side pinned to bottom via `margin-top:auto`. `window.resizeTo(1920,1200)` fired on theme entry (best-effort). Setlist hidden.
+
+CAPTAIN: Window-active auto-cursor to search, plus auto-voice activation (Web Speech API) into the search.
+
+SKIPPY: Added focus/visibilitychange/empty-click listeners that re-focus `#q`. New 🎤 button toggles continuous Web Speech API. Interim transcripts live-update the box; final transcripts fire the keyword parser first, fall through to search. Auto-restarts after Chrome's silence timeout. Red pulsing box-shadow while listening.
+
+CAPTAIN: Tag instrumentals with a different-colour tag. They should light up as STT detects them.
+
+SKIPPY: `is_instrumental(title, theme, summary)` predicate unifies title-pattern match ("instrumental"/"inst."/"no-vocals"/"karaoke") + `theme=instrumental` + summary prefix. `♬ INSTR` pill badge + violet `#818cf8` 3-px left-border on `.tk` and `.anchor-box`. Theme overrides for Day/LCARS/Borg/Passthrough. 70 tracks light up today from titles; the rest will fill in when STT runs.
+
+CAPTAIN: Did the PC return cues / lyrics / instrumentals yet? Dispatch all three jobs; check progress first; bypass permissions; and since you can't trigger them yourself, build the trigger too.
+
+SKIPPY: Audit: autocue reset finished (slots 1/2/8 on ~21k tracks; slots 3/4 on <200). STT: +3 entries only — essentially didn't run. Instrumentals from STT: 0. Wrote `tools/DISPATCH_PC_RUN_ALL_2026-04-21.md` with baseline snapshot, Job 0 Bootstrap (installs the watcher), Job 1 (stage10_autocue slots 3+4), Job 2 (stage9_stt CUDA — also fills instrumental tags as byproduct). Built `tools/pc_dispatch_watcher.py`: polls origin/main every 60s, detects unprocessed `DISPATCH_PC_*.md`, extracts each file's "Run this" block, invokes `claude --dangerously-skip-permissions`. State in `pc_dispatch_log.json`. Windows Scheduled Task installer built-in. Remote URL verification. Kill switch via `tools/STOP_WATCHER` file. One manual paste on the PC bootstraps it; every future Mac dispatch runs hands-free.
+
+**Key decisions made:**
+- AR spatial zones: TOP=world, BOTTOM=self, CORNERS=glance, SIDES=minimise
+- Viture Luma Ultra is the target (1920×1200, 16:10, 52° FOV); Pro XR is fallback
+- Passthrough is a MODE (layout changes) not just a colour swap
+- Voice is secondary to text — single `#q` input is the convergence point; voice bridges POST text the same way the keyboard does
+- "Size-justified" pattern: binary-search font to fill a rectangle exactly, justify aligns the edges
+- PC autonomy via dispatch-watcher: Mac pushes, PC polls-and-runs, state tracked
+- The DJ app is a testbed for a broader paradigm: read-only UI + voice/text input + inventoried command vocabularies; future "Z-Phone" app folds many views into one input-stream host
+
+**Notable moments:**
+- `getComputedStyle` reported `rgb(17,17,17)` for body bg while the actual rendered pixels were pure `#000` — Chrome extension quirk, red herring that cost 20 minutes
+- First pass of "spatial zone strips" (TOP deck-strip + BOTTOM selected-strip) got retired after one iteration when the Captain pivoted back to a big anchor card in col 1
+- The magnetic-cable recovery problem came and went — belayed before shipping, so no `/passthrough` URL route was committed
+- `lstrip("/art/")` bug found in embed code — strips character sets not prefix strings; fixed with `removeprefix`
+- Captain's vision: the phone-as-battery, glasses-as-display model with dual USB-C is 18 months away from the first OEM shipping it
+
+**Files modified:**
+- `stage9_dj_suggest.py` — +passthrough theme + 5-theme cycle + keyword parser + `/api/load-to-deck` + `/api/input-text` + auto-focus + 🎤 STT + `fitPassthrough()` + `sizeJustify()` + `is_instrumental()` + `♬ INSTR` badge
+- `tools/DISPATCH_PC_RUN_ALL_2026-04-21.md` — full PC dispatch with Job 0 watcher bootstrap
+- `tools/pc_dispatch_watcher.py` — NEW: autonomous dispatch pickup on PC
+- memory: `hardware_viture_glasses.md`, MEMORY.md index updated
+
+---
