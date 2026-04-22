@@ -1346,9 +1346,11 @@ body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible',
 #hdr{background:var(--hdr-bg);padding:10px 18px;border-bottom:2px solid var(--hdr-bdr);display:flex;align-items:center;gap:16px;flex-shrink:0}
 #hdr h1{color:var(--hdr-text);font-family:var(--lbl-font);font-size:15px;letter-spacing:3px;text-transform:uppercase;flex:1}
 #hdr small{color:var(--hdr-sub);font-size:11px}
-#theme-btn,#art-reload-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 10px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:12px;cursor:pointer;letter-spacing:1px;flex-shrink:0;transition:all .15s;text-transform:uppercase}
-#theme-btn:hover,#art-reload-btn:hover{border-color:var(--text2);color:var(--text)}
-#art-reload-btn{font-size:14px;padding:3px 7px}
+#theme-btn,#art-reload-btn,#stt-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:3px 10px;border-radius:var(--btn-r);font-family:var(--lbl-font);font-size:12px;cursor:pointer;letter-spacing:1px;flex-shrink:0;transition:all .15s;text-transform:uppercase}
+#theme-btn:hover,#art-reload-btn:hover,#stt-btn:hover{border-color:var(--text2);color:var(--text)}
+#art-reload-btn,#stt-btn{font-size:14px;padding:3px 7px}
+#stt-btn.listening{color:#ff3344;border-color:#ff3344;animation:sttPulse 1.2s ease-in-out infinite}
+@keyframes sttPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,51,68,0.6)}50%{box-shadow:0 0 0 6px rgba(255,51,68,0)}}
 #osc-status{font-size:10px;padding:3px 9px;border-radius:3px;letter-spacing:1px;text-transform:uppercase}
 #osc-status.on{background:#14532d;color:#4ade80}
 #osc-status.off{background:#1e293b;color:#555}
@@ -1483,8 +1485,8 @@ body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!i
 body.lcars #hdr{background:var(--col1);border-bottom:none;padding:0;min-height:40px}
 body.lcars #hdr h1{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:6px;padding:0 20px;color:#000}
 body.lcars #hdr small{font-family:'Oswald',sans-serif;padding-right:12px}
-body.lcars #theme-btn,body.lcars #art-reload-btn{font-family:'Oswald',sans-serif;font-weight:700;background:#CC7700;color:#000;border:none;padding:0 16px;align-self:stretch;border-radius:0}
-body.lcars #theme-btn:hover,body.lcars #art-reload-btn:hover{background:#FFAA00}
+body.lcars #theme-btn,body.lcars #art-reload-btn,body.lcars #stt-btn{font-family:'Oswald',sans-serif;font-weight:700;background:#CC7700;color:#000;border:none;padding:0 16px;align-self:stretch;border-radius:0}
+body.lcars #theme-btn:hover,body.lcars #art-reload-btn:hover,body.lcars #stt-btn:hover{background:#FFAA00}
 body.lcars #osc-status{font-family:'Oswald',sans-serif;border-radius:0;padding:0 14px;align-self:stretch;display:flex;align-items:center}
 body.lcars #osc-status.on{background:#004400;color:#00FF66}
 body.lcars #osc-status.off{background:#330000;color:#FF3300}
@@ -1576,7 +1578,9 @@ body.passthrough #q::placeholder{color:#005500}
 body.passthrough #q:focus{border-color:#00FF00;box-shadow:0 0 6px #00FF0044}
 body.passthrough .slot-num{display:inline-block}
 body.passthrough #theme-btn,
-body.passthrough #art-reload-btn{font-size:11px;padding:2px 6px;border-color:#003300;color:#00FF00}
+body.passthrough #art-reload-btn,
+body.passthrough #stt-btn{font-size:11px;padding:2px 6px;border-color:#003300;color:#00FF00}
+body.passthrough #stt-btn.listening{color:#ff3344;border-color:#ff3344}
 body.passthrough .panic-btn,
 body.passthrough #swap-btn,
 body.passthrough #setlist-btn{background:#000;color:#00FF00;border:1px solid #003300;padding:4px 10px;font-size:11px}
@@ -1628,6 +1632,7 @@ body.passthrough .dc .dc-meta{font-size:10px}
   <span id="osc-status" class="off">OSC OFF</span>
   <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg → Passthrough">🌙</button>
   <button id="art-reload-btn" onclick="reloadArt()" title="Reload album art index (after Syncthing sync)">🖼</button>
+  <button id="stt-btn" onclick="toggleSTT()" title="Toggle voice recognition (Web Speech API). Continuous mode — speech goes into search box.">🎤</button>
 </div>
 <!-- Passthrough-only strips (hidden in all other themes via CSS) -->
 <div id="deck-strip"></div>
@@ -1737,6 +1742,89 @@ function reloadArt(){
     .then(r=>r.json())
     .then(d=>{btn.textContent='🖼';console.log('Art index reloaded:',d.count,'entries');})
     .catch(()=>{btn.textContent='🖼';});
+}
+
+// ── Auto-focus: whenever this window gains focus, cursor → #q ─────────────
+function focusSearch(){
+  const q=document.getElementById('q');
+  if(!q)return;
+  // Don't steal focus from modals or other inputs
+  const modalOpen=document.getElementById('show-modal-overlay')?.classList.contains('show')
+                ||document.getElementById('setlist-overlay')?.classList.contains('show');
+  if(modalOpen)return;
+  const a=document.activeElement;
+  if(a&&a!==document.body&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a!==q)return;
+  q.focus();
+}
+window.addEventListener('focus',focusSearch);
+window.addEventListener('load',()=>setTimeout(focusSearch,100));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(focusSearch,50);});
+// Re-focus after any click that isn't on a button/card/input
+document.addEventListener('click',e=>{
+  if(e.target.closest('input,textarea,button,a,.tk,.dc,.anchor-box,.r'))return;
+  setTimeout(focusSearch,10);
+});
+
+// ── Speech recognition (Web Speech API) ───────────────────────────────────
+// Voice flows straight into #q — keyword commands fire on final transcripts,
+// free-text falls through into the live-search pipeline.
+let _stt=null, _sttOn=false;
+function sttSupported(){return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}
+function sttBtn(){return document.getElementById('stt-btn');}
+function sttPaint(){
+  const b=sttBtn();if(!b)return;
+  b.textContent=_sttOn?'🔴':'🎤';
+  b.classList.toggle('listening',_sttOn);
+}
+function startSTT(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Voice recognition not supported in this browser');return;}
+  if(_stt){try{_stt.stop();}catch(e){}}
+  _stt=new SR();
+  _stt.continuous=true;
+  _stt.interimResults=true;
+  _stt.lang='en-US';
+  _stt.onresult=ev=>{
+    let interim='', final='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const r=ev.results[i];
+      if(r.isFinal)final+=r[0].transcript;else interim+=r[0].transcript;
+    }
+    const q=document.getElementById('q');
+    if(!q)return;
+    if(interim&&!final){q.value=interim.trim();}
+    if(final){
+      const txt=final.trim();
+      q.value=txt;
+      if(tryKeywordCommand(txt)){
+        q.value='';
+        document.getElementById('results').style.display='none';
+        toast(`🎤 ${txt}`);
+      }else{
+        // Not a command — kick the live search pipeline
+        q.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    }
+  };
+  _stt.onerror=ev=>{
+    console.warn('STT error:',ev.error);
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){
+      toast('🎤 Microphone permission denied');
+      _sttOn=false;sttPaint();
+    }
+  };
+  _stt.onend=()=>{
+    // Chrome auto-stops after silence — re-arm if still on
+    if(_sttOn){try{_stt.start();}catch(e){}}
+    else sttPaint();
+  };
+  try{_stt.start();_sttOn=true;sttPaint();toast('🎤 Listening…');}
+  catch(e){toast('🎤 Failed to start: '+e.message);}
+}
+function toggleSTT(){
+  if(!sttSupported()){toast('Voice recognition not supported');return;}
+  if(_sttOn){_sttOn=false;try{_stt.stop();}catch(e){}sttPaint();toast('🎤 Stopped');}
+  else{startSTT();}
 }
 
 // ── Keyword commands — typed (or voice-dictated) into #q, fire on Enter ─────
