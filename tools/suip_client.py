@@ -35,6 +35,7 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent))
 from suip_scene import (
     DJState, build_scene, build_manifest, VIEW_ID,
+    MIN_TEXT_PX, MAX_FOCUS_TARGETS, PALETTE_ENUM_NAMES,
 )
 
 log = logging.getLogger("suip_client")
@@ -191,6 +192,10 @@ class SUIPClient:
     """
     Long-lived SUIP v1 client. One instance per DJ process.
 
+    Skippy listens on port 47823 (same-device: http://127.0.0.1:47823).
+    Set SKIPPY_URL=http://127.0.0.1:47823 (same device) or the Tailscale
+    address of the phone when running across the mesh.
+
     Lifecycle:
       start()  → spawns daemon thread → register → SSE loop
       notify_state_changed() → coalesced within 100 ms, triggers scene:full
@@ -268,14 +273,22 @@ class SUIPClient:
             return None
 
     def _register(self) -> bool:
+        # Derive stream_origin and stream_url from our manifest URL.
+        # manifest_url = "http://host:port/manifest.json"
+        # stream_origin = "http://host:port"
+        # stream_url    = "http://host:port/control"
+        origin = self.manifest_url.rsplit("/manifest.json", 1)[0]
         body = {
-            "type":         "register",
-            "id":           self.view_id,
-            "name":         "DJ Block Planner",
-            "manifest_url": self.manifest_url,
-            "spec_version": "1",
-            "stream_origin": self.manifest_url.rsplit("/.well-known", 1)[0],
-            "capabilities": ["speak"],
+            "id":               self.view_id,
+            "name":             "DJ Block Planner",
+            "spec_version":     "1",
+            "manifest_url":     self.manifest_url,
+            "stream_url":       f"{origin}/control",
+            "stream_origin":    origin,
+            "aspect_ratio":     "16:10",
+            "min_text_px":      MIN_TEXT_PX,
+            "max_focus_targets": MAX_FOCUS_TARGETS,
+            "palette":          list(PALETTE_ENUM_NAMES),
         }
         resp = self._post("register", body)
         return bool(resp and resp.get("accepted"))
@@ -319,24 +332,37 @@ class SUIPClient:
             backoff = min(backoff * 2, 30.0)
 
     def _sse_loop(self) -> None:
-        """Open SSE and dispatch events until the connection closes or stop fires."""
+        """Open SSE and dispatch events until the connection closes or stop fires.
+
+        Uses iter_content(chunk_size=None) rather than iter_lines so that data
+        arrives as soon as Skippy flushes it — iter_lines buffers 512 bytes by
+        default and would stall on small SSE events.
+        """
         url = (f"{self.skippy}/passthrough/stream"
                f"?view={urllib.parse.quote(self.view_id)}")
         log.info("opening SSE: %s", url)
         with requests.get(url, stream=True, timeout=(5, None)) as r:
             r.raise_for_status()
+            buf    = b""
             buffer: list[str] = []
-            for line in r.iter_lines(decode_unicode=True):
+            for chunk in r.iter_content(chunk_size=None):
                 if self._stop.is_set():
                     return
-                if line is None:
+                if not chunk:
                     continue
-                if line == "":
-                    self._flush(buffer)
-                    buffer = []
-                    continue
-                buffer.append(line)
-            self._flush(buffer)
+                buf += chunk
+                # Split on newlines; keep any incomplete tail in buf
+                while b"\n" in buf:
+                    raw_line, buf = buf.split(b"\n", 1)
+                    line = raw_line.decode("utf-8", errors="replace").rstrip("\r")
+                    if line == "":
+                        self._flush(buffer)
+                        buffer = []
+                    else:
+                        buffer.append(line)
+            # Flush whatever is left when the connection closes
+            if buffer:
+                self._flush(buffer)
 
     def _flush(self, buffer: list[str]) -> None:
         payload = None

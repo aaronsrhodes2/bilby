@@ -2660,12 +2660,35 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
     def ui():
         return Response(HTML, mimetype="text/html")
 
-    @app.route("/.well-known/skippy-passthrough.json")
+    @app.route("/manifest.json")
     def suip_manifest():
-        """SUIP v1 manifest — consumed by SkippyView on /passthrough/register.
-        Endpoint is this URL; that's what the Captain relays to SkippyView."""
+        """SUIP v1 manifest — fetched by Skippy after registration.
+        Give SkippyView: http://<mac-tailscale-host>:7334/manifest.json"""
         from tools.suip_scene import build_manifest
         return jsonify(build_manifest()), 200, {"Cache-Control": "no-cache"}
+
+    @app.route("/.well-known/skippy-passthrough.json")
+    def suip_manifest_legacy():
+        """Legacy alias — redirects to /manifest.json."""
+        from flask import redirect
+        return redirect("/manifest.json", code=301)
+
+    @app.route("/control")
+    def suip_control_stream():
+        """SSE endpoint declared as stream_url in SUIP registration.
+        Skippy may open GET /control; we send a connected event then keepalives.
+        Scene patches flow via POST to Skippy's /passthrough/patch as normal."""
+        def _gen():
+            import time as _t
+            yield "data: {\"type\":\"connected\"}\n\n"
+            while True:
+                _t.sleep(15)
+                yield ": keepalive\n\n"
+        return Response(
+            _gen(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.route("/setlist")
     def setlist_page():
@@ -3058,7 +3081,7 @@ def main():
             from suip_client import SUIPClient, IntentHandler
             from suip_scene import DJState
 
-            default_manifest = f"http://127.0.0.1:{PORT}/.well-known/skippy-passthrough.json"
+            default_manifest = f"http://127.0.0.1:{PORT}/manifest.json"
             manifest_url = os.environ.get("SUIP_MANIFEST_URL", default_manifest)
 
             _suip_handler = IntentHandler(

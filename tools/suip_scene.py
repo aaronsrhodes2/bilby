@@ -16,24 +16,16 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 # ── Palette enum names (per SUIP v1 §5.4) ─────────────────────────────────────
-#   Scene tree colors use these enum strings, never hex. Manifest palette
-#   field uses hex; the two lists must correspond.
+#   Scene tree colors AND the registration body palette both use these names.
+#   SkippyView declares exactly these seven; scene nodes must only use names
+#   from this list (the _text() guard enforces it).
+#
+#   Hex reference (for documentation only — not sent in the protocol):
+#     black=#000000  white=#FFFFFF  green=#00FF00  amber=#FFCC00
+#     cyan=#00CCFF   violet=#818cf8 red=#FF3344
 
 PALETTE_ENUM_NAMES = [
-    "black", "white", "green", "amber", "cyan",
-    "violet", "red", "dim_green", "dim_green_hi",
-]
-
-PALETTE_HEX = [
-    "#000000",  # black
-    "#FFFFFF",  # white
-    "#00FF00",  # green
-    "#FFCC00",  # amber
-    "#00CCFF",  # cyan
-    "#818cf8",  # violet
-    "#FF3344",  # red
-    "#003300",  # dim_green
-    "#66FF66",  # dim_green_hi
+    "black", "white", "cyan", "amber", "green", "violet", "red",
 ]
 
 # ── DJ state container (what the client hands us for scene rendering) ────────
@@ -55,11 +47,11 @@ class DJState:
 
 # ── Manifest ──────────────────────────────────────────────────────────────────
 
-VIEW_ID       = "dj_block_planner"
+VIEW_ID       = "dj.block_planner"   # dot notation per SkippyView
 VIEW_NAME     = "DJ Block Planner"
 VIEW_VERSION  = "2.0.0"
 MIN_TEXT_PX   = 22
-MAX_FOCUS_TARGETS = 12
+MAX_FOCUS_TARGETS = 7   # 2 deck cards + 5 slot-2 candidates = 7 total FocusTargets
 SPEC_VERSION  = "1"
 
 # Voice commands — matches the JS KEYWORD_CMDS grammar in stage9_dj_suggest.py.
@@ -69,31 +61,29 @@ VOICE_COMMANDS = [
     {"phrase": ["swap decks", "swap"],             "intent": "deck_swap"},
     {"phrase": ["save me", "rescue"],              "intent": "save_me"},
     {"phrase": ["surprise me"],                    "intent": "surprise_me"},
+    # 5 pick slots (2 decks + 5 tracks = 7 total FocusTargets; cap is MAX_FOCUS_TARGETS)
     {"phrase": ["select 1", "select one",   "track 1"], "intent": "select_1"},
     {"phrase": ["select 2", "select two",   "track 2"], "intent": "select_2"},
     {"phrase": ["select 3", "select three", "track 3"], "intent": "select_3"},
     {"phrase": ["select 4", "select four",  "track 4"], "intent": "select_4"},
     {"phrase": ["select 5", "select five",  "track 5"], "intent": "select_5"},
-    {"phrase": ["select 6", "select six",   "track 6"], "intent": "select_6"},
-    {"phrase": ["select 7", "select seven", "track 7"], "intent": "select_7"},
-    {"phrase": ["select 8", "select eight", "track 8"], "intent": "select_8"},
     {"phrase": ["select a", "load a", "deck a", "to a"], "intent": "select_a"},
     {"phrase": ["select b", "load b", "deck b", "to b"], "intent": "select_b"},
 ]
 
 
 def build_manifest() -> dict:
-    """Returned at GET /.well-known/skippy-passthrough.json"""
+    """Returned at GET /manifest.json — fetched by Skippy after registration."""
     return {
-        "name":                     VIEW_NAME,
-        "version":                  VIEW_VERSION,
-        "passthrough_spec_version": SPEC_VERSION,
-        "entry_url":                "/",
-        "aspect_ratio":             "16:10",
-        "palette":                  list(PALETTE_HEX),
-        "min_text_px":              MIN_TEXT_PX,
-        "max_focus_targets":        MAX_FOCUS_TARGETS,
-        "voice_commands":           list(VOICE_COMMANDS),
+        "name":             VIEW_NAME,
+        "version":          VIEW_VERSION,
+        "spec_version":     SPEC_VERSION,
+        "entry_url":        "/",
+        "aspect_ratio":     "16:10",
+        "palette":          list(PALETTE_ENUM_NAMES),
+        "min_text_px":      MIN_TEXT_PX,
+        "max_focus_targets": MAX_FOCUS_TARGETS,
+        "voice_commands":   list(VOICE_COMMANDS),
     }
 
 
@@ -165,7 +155,7 @@ def _deck_card(deck: str, loaded: Optional[dict], playing: bool) -> dict:
                   node_id=f"deck_{deck}_label")
 
     if not loaded:
-        body = _text("—", color="dim_green", size_px=MIN_TEXT_PX,
+        body = _text("—", color="green", size_px=MIN_TEXT_PX,
                      node_id=f"deck_{deck}_empty")
         inner = _col([label, body], node_id=f"deck_{deck}_inner", gap=6)
     else:
@@ -211,7 +201,7 @@ def _selected_column(state: DJState) -> dict:
         return _col(
             [header,
              _text("No anchor loaded. Load a track in Traktor or pick from Play Next.",
-                   color="dim_green", size_px=MIN_TEXT_PX,
+                   color="green", size_px=MIN_TEXT_PX,
                    size_justify=True, node_id="anchor_empty")],
             node_id="c_selected", gap=8,
         )
@@ -227,7 +217,7 @@ def _selected_column(state: DJState) -> dict:
               size_px=MIN_TEXT_PX, node_id="anchor_bpm"),
         _text(a.get("key") or "—", color="cyan",
               size_px=MIN_TEXT_PX, node_id="anchor_key"),
-        _text(a.get("genre") or "—", color="dim_green",
+        _text(a.get("genre") or "—", color="green",
               size_px=MIN_TEXT_PX, node_id="anchor_genre"),
         _text("★" * int(a.get("stars", 0) or 0), color="amber",
               size_px=MIN_TEXT_PX, node_id="anchor_stars"),
@@ -253,7 +243,7 @@ def _selected_column(state: DJState) -> dict:
 
     summary = _text(
         a.get("lyric_summary") or "",
-        color="dim_green_hi",
+        color="cyan",
         size_px=MIN_TEXT_PX + 2,
         size_justify=True,
         node_id="anchor_summary",
@@ -275,7 +265,7 @@ def _candidate_card(t: dict, idx: int, selected: bool) -> dict:
     art = _text(t.get("artist", ""),
                 color="green" if selected else "white",
                 size_px=MIN_TEXT_PX + 2, node_id=f"s2_{idx}_artist")
-    sep = _text("—", color="dim_green",
+    sep = _text("—", color="green",
                 size_px=MIN_TEXT_PX, node_id=f"s2_{idx}_sep")
     tit = _text(t.get("title", ""),
                 color="white", size_px=MIN_TEXT_PX + 2,
@@ -288,7 +278,7 @@ def _candidate_card(t: dict, idx: int, selected: bool) -> dict:
               size_px=MIN_TEXT_PX, node_id=f"s2_{idx}_bpm"),
         _text(t.get("key") or "—", color="cyan",
               size_px=MIN_TEXT_PX, node_id=f"s2_{idx}_key"),
-        _text(t.get("genre") or "—", color="dim_green",
+        _text(t.get("genre") or "—", color="green",
               size_px=MIN_TEXT_PX, node_id=f"s2_{idx}_genre"),
         _text(f"{t.get('score', 0)}%", color="green", weight="bold",
               size_px=MIN_TEXT_PX, node_id=f"s2_{idx}_score"),
@@ -305,7 +295,7 @@ def _candidate_card(t: dict, idx: int, selected: bool) -> dict:
     children = [title_row, meta]
     if t.get("lyric_summary"):
         children.append(_text(
-            t["lyric_summary"], color="dim_green",
+            t["lyric_summary"], color="green",
             size_px=MIN_TEXT_PX, size_justify=True,
             node_id=f"s2_{idx}_summary"))
 
@@ -328,11 +318,11 @@ def _play_next_column(state: DJState) -> dict:
 
     if not state.slot2:
         children.append(_text("Waiting for suggestions…",
-                              color="dim_green", size_px=MIN_TEXT_PX,
+                              color="green", size_px=MIN_TEXT_PX,
                               node_id="playnext_wait"))
     else:
         sel = state.selected_slot2_idx
-        for i, t in enumerate(state.slot2[:8]):
+        for i, t in enumerate(state.slot2[:5]):  # 5 tracks + 2 decks = 7 FocusTargets
             children.append(_candidate_card(t, i, selected=(i == sel)))
 
     return _col(children, node_id="c_playnext", gap=6)
@@ -348,19 +338,19 @@ def _bridge_column(state: DJState) -> dict:
 
     if not state.slot3:
         children.append(_text("Waiting for bridge candidates…",
-                              color="dim_green", size_px=MIN_TEXT_PX,
+                              color="green", size_px=MIN_TEXT_PX,
                               node_id="bridge_wait"))
         return _col(children, node_id="c_bridge", gap=6)
 
     for gi, grp in enumerate(state.slot3[:4]):
         dest = grp.get("destination") or "—"
-        children.append(_text(f"→ {dest.upper()}", color="dim_green_hi",
+        children.append(_text(f"→ {dest.upper()}", color="cyan",
                               weight="bold", size_px=MIN_TEXT_PX,
                               node_id=f"s3_g{gi}_hdr"))
         for ti, t in enumerate(grp.get("tracks", [])[:2]):
             art = _text(t.get("artist", ""), color="white",
                         size_px=MIN_TEXT_PX, node_id=f"s3_g{gi}_{ti}_artist")
-            sep = _text("—", color="dim_green",
+            sep = _text("—", color="green",
                         size_px=MIN_TEXT_PX, node_id=f"s3_g{gi}_{ti}_sep")
             tit = _text(t.get("title", ""), color="white",
                         size_px=MIN_TEXT_PX, node_id=f"s3_g{gi}_{ti}_title")
@@ -380,7 +370,7 @@ def _bridge_column(state: DJState) -> dict:
             card_kids: list[dict] = [row, meta]
             if t.get("lyric_summary"):
                 card_kids.append(_text(
-                    t["lyric_summary"], color="dim_green",
+                    t["lyric_summary"], color="green",
                     size_px=MIN_TEXT_PX, size_justify=True,
                     node_id=f"s3_g{gi}_{ti}_summary"))
             children.append(_col(card_kids,
