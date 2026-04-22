@@ -7,7 +7,7 @@ a track, suggestions appear automatically — no typing, no clicking.
 Falls back to manual search if OSC is not configured.
 
 Run:   python3 stage9_dj_suggest.py
-Open:  http://localhost:5001
+Open:  http://localhost:7334
 
 ── Traktor OSC setup (one-time) ─────────────────────────────────────────────
 Traktor Preferences → Controller Manager → Add → Generic OSC
@@ -1523,13 +1523,33 @@ body.passthrough #pill-a,
 body.passthrough #pill-b,
 body.passthrough #deck-msg,
 body.passthrough #show-btn,
-body.passthrough #c1,
 body.passthrough #lyr-tooltip,
 body.passthrough #activity-bar{display:none !important}
 body.passthrough #deck-bar{padding:4px 10px;min-height:26px;border-bottom:0}
-body.passthrough #cols{grid-template-columns:1fr 1fr;gap:10px}
+body.passthrough #cols{grid-template-columns:0.75fr 1fr 1fr;gap:10px}
+/* Column 1 — Now Playing + Deck A/B (compact for glasses) */
+body.passthrough #c1 .col-body{padding:0}
+body.passthrough .anchor-box{background:#000;border:1px solid #003300;padding:10px 12px;border-radius:3px}
+body.passthrough .anchor-box .deck-tag{color:#00FF00;opacity:0.8}
+body.passthrough .anchor-box .an{font-size:15px}
+body.passthrough .anchor-box .an .aa{color:#00FF00}
+body.passthrough .anchor-box .an .at{color:#FFF}
+body.passthrough .anchor-box .anc-art{width:48px;height:48px}
+body.passthrough .deck-cards{grid-template-columns:1fr;gap:6px;margin-top:8px}
+body.passthrough .dc{background:#000;border:1px solid #003300;padding:8px 10px;border-radius:3px;position:relative}
+body.passthrough .dc-loaded{border-color:#00AA00}
+body.passthrough .dc-playing{border-color:#00FF00;background:#001500;box-shadow:0 0 6px #00FF0033}
+body.passthrough .dc .dc-label{color:#00FF00;font-size:10px;letter-spacing:2px}
+.dc-playing-badge{display:inline-block;color:#00FF00;font-weight:bold;font-size:10px;letter-spacing:1px;margin-left:6px;padding:1px 5px;border:1px solid #00FF00;border-radius:2px;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.55}}
+body.passthrough .dc .dc-artist{color:#00FF00}
+body.passthrough .dc .dc-title{color:#FFF}
+body.passthrough .dc .dc-meta{color:#88FF88;font-size:11px;opacity:0.8}
+body.passthrough .dc-empty{color:#004400;font-size:11px}
 body.passthrough .col-hdr{font-size:11px;letter-spacing:2px;opacity:0.7;border-bottom:1px solid #003300;color:#00FF00}
-body.passthrough .tk{background:#000;border:1px solid #003300;padding:10px 12px;font-size:15px}
+body.passthrough .tk{background:#000;border:1px solid #003300;padding:10px 12px 10px 56px;font-size:15px}
+body.passthrough .art-thumb{left:10px;right:auto;top:10px}
+body.passthrough .tk .tn{padding-right:0 !important}
 body.passthrough .tk.sel{border-color:#00FF00;background:#001500;box-shadow:0 0 8px #00FF0033}
 body.passthrough .tk:hover{border-color:#00AA00}
 body.passthrough .tn{font-size:15px;line-height:1.3}
@@ -1610,7 +1630,7 @@ body.passthrough #setlist-btn:hover{background:#001500;border-color:#00FF00}
 </div>
 <div id="cols">
   <div class="col" id="c1">
-    <div class="col-hdr">① Now Playing</div>
+    <div class="col-hdr">① Selected Song</div>
     <div class="col-body" id="b1"><div class="empty">Load a track in Traktor<br>— or search above.</div></div>
   </div>
   <div class="col" id="c2">
@@ -2010,7 +2030,8 @@ function dcCardHtml(deck){
   const t=deckTracks[deck];
   const playing=deckPlaying[deck];
   const cls=t?(playing?'dc dc-playing':'dc dc-loaded'):'dc dc-idle';
-  const label=`DECK ${deck.toUpperCase()}${playing?' ▶':''}`;
+  const playBadge=playing?'<span class="dc-playing-badge" title="Playing (lsof detected)">▶ PLAYING</span>':'';
+  const label=`DECK ${deck.toUpperCase()} ${playBadge}`;
   const dcArt=t&&t.art_url?`<img src="${t.art_url}" style="float:right;width:32px;height:32px;object-fit:cover;border-radius:3px;margin:0 0 4px 8px;opacity:0.85" onerror="this.style.display='none'" alt="">`:''
   const body=t
     ? `${dcArt}<div class="dc-name"><span class="dc-artist">${esc(t.artist)}</span><span class="dc-sep"> — </span><span class="dc-title">${esc(t.title)}</span></div>
@@ -2042,6 +2063,8 @@ async function rescueMe(mode){
   const t=await fetch(url).then(r=>r.json());
   if(t.error){alert('No candidates found.');return}
   _rescueTrack=t;
+  // Clear search bar — Selected Song now populated by rescue
+  q.value='';res.style.display='none';
   // Load as anchor — fires full suggestion pipeline just like a search pick or deck load
   await loadAnchor(t, null);
   // Flash the rescue label briefly so the Captain knows which button fired it
@@ -2190,7 +2213,7 @@ async function setAnchor(i){res.style.display='none';q.value='';await loadAnchor
 // ── Load anchor (shared by OSC + manual) ───────────────────────────────────
 async function loadAnchor(track,deck){
   anchor=track;
-  const deckTag=deck?`<div class="deck-tag">DECK ${deck.toUpperCase()} ▶ NOW PLAYING</div>`:'';
+  const deckTag=deck?`<div class="deck-tag">SELECTED SONG ▸ DECK ${deck.toUpperCase()}</div>`:'<div class="deck-tag">SELECTED SONG</div>';
   // Replace anchor box only; keep deck cards
   const cardsEl=b1.querySelector('.deck-cards');
   const ancArt=track.art_url?`<img class="anc-art" src="${track.art_url}" onerror="this.style.display='none'" alt="">`:'';
@@ -2223,6 +2246,9 @@ function renderSlot2(selIdx){
 }
 async function pickSlot2(i){
   slot2=S2[i];renderSlot2(i);
+  // Clear search bar — the selection is made, search context no longer needed
+  const qEl=document.getElementById('q');
+  if(qEl){qEl.value='';document.getElementById('results').style.display='none';}
   b3.innerHTML='<div class="empty">Loading…</div>';
   const d=await fetch('/api/slot3?slot2='+encodeURIComponent(slot2.path)+'&anchor='+encodeURIComponent(anchor.path)).then(r=>r.json());
   renderSlot3(d);
