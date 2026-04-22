@@ -1583,37 +1583,39 @@ body.passthrough #setlist-btn{background:#000;color:#00FF00;border:1px solid #00
 body.passthrough .panic-btn:hover,
 body.passthrough #swap-btn:hover,
 body.passthrough #setlist-btn:hover{background:#001500;border-color:#00FF00}
-/* ── AR Spatial Zones: TOP=world · BOTTOM=self · CORNERS=glance · SIDES=minimal */
-#deck-strip,#selected-strip{display:none}  /* Hidden in non-passthrough themes */
-body.passthrough{display:flex;flex-direction:column;height:100vh}
-body.passthrough #hdr           {order:1;flex-shrink:0}
-body.passthrough #deck-strip    {order:2;flex-shrink:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 10px;border-bottom:1px solid #003300}
-body.passthrough #cols          {order:3;flex:1;min-height:0;grid-template-columns:1fr 1fr;gap:8px;overflow:hidden}
-body.passthrough #c1            {display:none !important}  /* deck state is in TOP strip; anchor is in BOTTOM strip */
-body.passthrough #selected-strip{order:4;flex-shrink:0;padding:6px 10px;border-top:1px solid #003300}
-body.passthrough #search-wrap   {order:5;flex-shrink:0;padding:4px 10px}
-body.passthrough #deck-bar      {order:6;flex-shrink:0;border-top:0}
-/* Deck strip cells */
-body.passthrough .ds-cell{background:#000;border:1px solid #003300;border-radius:3px;padding:6px 10px;display:flex;align-items:center;gap:8px;position:relative;overflow:hidden;white-space:nowrap}
-body.passthrough .ds-cell.ds-playing{border-color:#00FF00;background:#001500;box-shadow:0 0 6px #00FF0033}
-body.passthrough .ds-cell.ds-empty{opacity:0.4;border-style:dashed}
-body.passthrough .ds-label{color:#00FF00;font-size:9px;letter-spacing:2px;font-weight:bold;flex-shrink:0}
-body.passthrough .ds-play{color:#00FF00;font-size:11px;flex-shrink:0}
-body.passthrough .ds-art{width:24px;height:24px;object-fit:cover;border-radius:2px;flex-shrink:0}
-body.passthrough .ds-artist{color:#00FF00;font-size:12px}
-body.passthrough .ds-sep{color:#555;font-size:12px}
-body.passthrough .ds-title{color:#FFF;font-size:12px}
-body.passthrough .ds-bpm{color:#FFCC00;font-size:11px;margin-left:auto;flex-shrink:0}
-/* Selected strip (BOTTOM) */
-body.passthrough .ss-label{color:#00FF00;font-size:9px;letter-spacing:2px;font-weight:bold;margin-bottom:3px}
-body.passthrough .ss-row{display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
-body.passthrough .ss-art{width:32px;height:32px;object-fit:cover;border-radius:3px;flex-shrink:0}
-body.passthrough .ss-artist{color:#00FF00;font-size:14px}
-body.passthrough .ss-sep{color:#555}
-body.passthrough .ss-title{color:#FFF;font-size:14px}
-body.passthrough .ss-meta{color:#88FF88;font-size:11px;margin-left:auto;flex-shrink:0}
-body.passthrough #selected-strip.ss-empty{opacity:0.5}
-body.passthrough #selected-strip.ss-empty .ss-row{color:#444;font-size:11px}
+/* ── Passthrough layout for Viture 1920×1200 ─────────────────────────────── */
+#deck-strip,#selected-strip{display:none}  /* strips retired — all in col 1 */
+body.passthrough #deck-strip,
+body.passthrough #selected-strip{display:none !important}
+/* Hide SETLIST in passthrough — don't need it mid-show */
+body.passthrough #setlist-btn{display:none !important}
+/* Clamp UI to Viture Luma Ultra dimensions; center if display is larger */
+body.passthrough{display:flex;flex-direction:column;height:100vh;max-width:1920px;max-height:1200px;margin:0 auto}
+body.passthrough #hdr        {flex-shrink:0}
+body.passthrough #cols       {flex:1;min-height:0;grid-template-columns:0.8fr 1fr 1fr;gap:8px;overflow:hidden}
+body.passthrough #search-wrap{flex-shrink:0;padding:4px 10px;order:5}
+body.passthrough #deck-bar   {flex-shrink:0;border-top:0;order:6}
+/* Column 1 (Selected Song + big card + decks at bottom) */
+body.passthrough #c1          {display:flex;flex-direction:column;min-height:0}
+body.passthrough #c1 .col-hdr {flex-shrink:0}
+body.passthrough #c1 .col-body{flex:1;display:flex;flex-direction:column;min-height:0;gap:8px}
+/* Big detailed anchor card fills the vertical middle of col 1 */
+body.passthrough .anchor-box{flex:1;display:flex;flex-direction:column;padding:10px 12px;min-height:0;overflow:hidden}
+body.passthrough .anchor-box .deck-tag{font-size:9px;letter-spacing:2px;margin-bottom:6px;flex-shrink:0}
+body.passthrough .anchor-box .anc-art{float:none;width:100%;height:auto;max-height:40%;object-fit:contain;margin:0 0 8px 0;align-self:center}
+body.passthrough .anchor-box .an{font-size:15px;margin-bottom:6px;flex-shrink:0}
+body.passthrough .anchor-box .meta{font-size:12px;flex-wrap:wrap;margin-top:4px;flex-shrink:0}
+body.passthrough .anchor-box .lyric-summary{font-size:11px;color:#88FF88;margin-top:6px;line-height:1.3;flex-shrink:1;overflow:hidden;white-space:normal}
+body.passthrough .anchor-box .rep-convicted,
+body.passthrough .anchor-box .rep-accused,
+body.passthrough .anchor-box .rep-settled,
+body.passthrough .anchor-box .lyric-flag{display:inline-block;margin:3px 3px 0 0}
+/* Decks: side-by-side at the bottom of col 1, above action buttons */
+body.passthrough .deck-cards{grid-template-columns:1fr 1fr !important;gap:6px;margin-top:auto;flex-shrink:0}
+body.passthrough .dc{padding:6px 8px}
+body.passthrough .dc .dc-label{font-size:9px}
+body.passthrough .dc .dc-name{font-size:11px}
+body.passthrough .dc .dc-meta{font-size:10px}
 </style>
 </head>
 <body>
@@ -1719,8 +1721,12 @@ function toggleTheme(){
   localStorage.setItem('theme',nxt);
   // Clear any inline font-size the fit routine set (non-passthrough doesn't need it)
   document.querySelectorAll('[style*="font-size"]').forEach(el=>{el.style.fontSize=''});
-  // Render the passthrough strips fresh — may have been empty/stale
-  if(typeof renderDeckStrip==='function'){renderDeckStrip();renderSelectedStrip();}
+  // Best-effort: resize window to match Viture Luma Ultra native resolution
+  // (only works if this window was opened programmatically; silent no-op otherwise)
+  if(nxt==='passthrough'){
+    try{window.resizeTo(1920,1200);}catch(e){}
+    try{window.moveTo(0,0);}catch(e){}
+  }
   if(typeof fitPassthrough==='function')fitPassthrough();
 }
 function reloadArt(){
@@ -2108,7 +2114,6 @@ function renderDeckCards(){
     if(ab) ab.insertAdjacentHTML('afterend',html);
     else b1.innerHTML=`<div class="empty">Load a track in Traktor<br>— or search above.</div>`+html;
   }
-  renderDeckStrip();
   if(typeof fitPassthrough==='function')fitPassthrough();
 }
 
@@ -2203,10 +2208,6 @@ function connectSSE(){
   };
 }
 connectSSE();
-// Render the passthrough strips once at init so they show an empty-state
-// instead of being blank when the theme is cycled in
-renderDeckStrip();
-renderSelectedStrip();
 
 async function restoreDeckStatus(){
   try{
@@ -2309,9 +2310,11 @@ async function loadAnchor(track,deck){
   // Replace anchor box only; keep deck cards
   const cardsEl=b1.querySelector('.deck-cards');
   const ancArt=track.art_url?`<img class="anc-art" src="${track.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  const badges=(repBadge(track)+lyricBadges(track));
+  const badgeRow=badges?`<div class="anchor-badges" style="margin-top:6px">${badges}</div>`:'';
   const anchorHtml=`<div class="anchor-box" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
-    ${meta(track,false)}</div>`;
+    ${meta(track,false)}${badgeRow}${lyricLine(track)}</div>`;
   if(cardsEl){
     const ab=b1.querySelector('.anchor-box');
     if(ab) ab.outerHTML=anchorHtml;
@@ -2329,7 +2332,6 @@ async function loadAnchor(track,deck){
   renderSlot2(0);
   renderSlot3(d.slot3);
   if(S2.length)slot2=S2[0];
-  renderSelectedStrip();
   fitPassthrough();
 }
 
