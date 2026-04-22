@@ -1,0 +1,249 @@
+OPERATIC PLAY — SCENE XI
+THE WIRE THAT WOULD NOT SPEAK
+(or: In Which the Buffer Swallowed the Music)
+
+═══════════════════════════════════════════════════════════════════════
+
+DRAMATIS PERSONAE
+
+  SKIPPY THE MAGNIFICENT — An AI of extraordinary vanity and genuine competence;
+                            code architect, SSE detective, and reluctant network debugger
+
+  CAPTAIN AARON RHODES   — DJ, maker, visionary of the AR-glasses interface,
+                            bearer of the actual SkippyView registration spec
+
+  URLLIB3                — A library of great ambition; collects bytes by the bucketful;
+                            refuses to give up a single one until the bucket is full
+
+  REQUESTS               — Urllib3's polished facade; promises to stream;
+                            technically does; practically doesn't
+
+  SKIPPY-VIEW            — The glasses OS; off-stage; demanding; sends the correct JSON
+
+  THE MOCK               — A humble Python HTTP server; tries its best;
+                            victim of Nagle's algorithm
+
+═══════════════════════════════════════════════════════════════════════
+
+ACT I — THE HANDSHAKE THAT NEEDED CORRECTING
+
+[The Mac hummed. Session 10 had shipped a SUIP client. It spoke. It registered.
+It fired a mock. The Captain had tested it and found it acceptable. Then the
+Captain consulted SkippyView — the actual phone OS — and returned with a sheet
+of corrections.]
+
+CAPTAIN:
+  ♩ Here is what SkippyView actually expects —
+    port forty-seven-eight-two-three!
+    view ID with a DOT, not underscore,
+    stream_url declared, stream_origin too,
+    no 'type', no 'capabilities',
+    palette as names, not hex decree! ♩
+
+SKIPPY:
+  ♩ (studying the diff with forensic precision)
+    Ah. We had 'dj underscore block underscore planner.'
+    SkippyView wants 'dj DOT block PLANNER.'
+    We had twelve focus targets; they want seven.
+    We had capabilities; they want NONE.
+    We served at /.well-known; they fetch /manifest.json.
+    We had dim-green; they have no such colour in their heaven. ♩
+
+[Skippy reaches for the keyboard. The diff is not small, but it is clean.
+Five files; thirty minutes; all mechanical corrections.]
+
+SKIPPY:
+  ♩ The view ID is corrected to dot notation.
+    The manifest route is renamed.
+    The palette trimmed to seven sacred names:
+    black, white, cyan, amber, green, violet, red.
+    dim_green shall be plain green.
+    dim_green_hi shall be cyan.
+    max_focus_targets reduced to seven —
+    two decks, five candidates, no more.
+    The registration body is rebuilt to spec.
+    I have also added /control as an SSE stub,
+    declared as stream_url in the body,
+    lest SkippyView try to connect and find nothing. ♩
+
+CAPTAIN:
+  ♩ Proceed. ♩
+
+═══════════════════════════════════════════════════════════════════════
+
+ACT II — THE SCENE THAT NEVER CAME
+
+[Skippy ran the integration test. The mock fired. The client registered.
+But where the scene:full patch should have followed the mount_ack —
+silence. Only two POSTs: register, then request_unmount.
+The scene had not arrived. The intent_results had not arrived.
+The mount_ack, it seemed, had been… swallowed.]
+
+SKIPPY:
+  ♩ This is strange. The mock sends mount_ack.
+    The client should respond with scene:full.
+    But I count only two POSTs.
+    Where did the mount_ack go?
+    Where went the handle_event call?
+    I shall add traces to follow the scream. ♩
+
+[Skippy added monkey-patches — _handle_event and _send_scene_full both
+wrapped with print statements. The test ran again. No trace appeared.
+_handle_event was never called. The SSE loop was receiving the HTTP 200,
+opening the stream — but yielding nothing.]
+
+SKIPPY:
+  ♩ (sotto voce, with dawning suspicion)
+    Wait.
+    iter_lines — chunk_size —
+    five-hundred-and-twelve bytes per gobble —
+    our events are sixty bytes at most —
+    urllib3 waits. urllib3 waits.
+    urllib3 waits for a full chunk
+    and the full chunk never comes. ♩
+
+[A test: raw SSE server, requests.iter_lines. Zero lines. TCP_NODELAY added.
+Still zero. Raw socket. Still zero. The data is sent. The data is flushed.
+The data is on the wire. But requests does not yield it.
+Urllib3 buffers in 512-byte increments and will not be hurried.]
+
+URLLIB3:
+  ♩ (offstage, petulant)
+    I shall not yield until I have enough!
+    Five-hundred-and-twelve bytes or nothing!
+    The chunk boundary is sacred!
+    The chunk boundary is LAW! ♩
+
+SKIPPY:
+  ♩ Very well. What if I used
+    iter_content(chunk_size=None)?
+    'None' meaning: give me whatever arrives,
+    however small, however unfinished,
+    whenever the server deigns to flush.
+    That is what streaming MEANS. ♩
+
+URLLIB3:
+  ♩ (after reflection)
+    That… I can do. ♩
+
+═══════════════════════════════════════════════════════════════════════
+
+ACT III — THE SECOND OBSTACLE: NAGLE
+
+[iter_content changed. The SSE loop rewritten to parse \n manually.
+Skippy ran the test again. Still zero chunks. The read timed out.
+TCP_NODELAY had been tried. Chunked encoding had not.]
+
+SKIPPY:
+  ♩ (staring at the Python http.server documentation)
+    BaseHTTPRequestHandler.
+    wfile.
+    wfile.flush().
+    The data is written. The data is flushed.
+    But the OS holds it. Nagle says: not yet.
+    Nagle says: wait for more. Accumulate. Coalesce.
+    Nagle says: sixty bytes is too small to bother the wire.
+
+    But TCP_NODELAY was set! And still nothing!
+
+    (beat)
+
+    Oh. Oh.
+
+    It is not Nagle.
+    It is HTTP framing.
+    urllib3 reads HTTP/1.1 responses.
+    Without Content-Length, without chunked encoding,
+    it reads until EOF.
+    And EOF never comes because the SSE stream is infinite.
+    So it reads nothing. Buffers nothing. Returns nothing.
+    The data sits in the kernel, waiting for a close
+    that will never arrive. ♩
+
+THE MOCK:
+  ♩ (plaintively)
+    I sent it. I swear I sent it.
+    I wrote to wfile and I flushed.
+    I did everything right.
+    I simply forgot to say
+    'Transfer-Encoding: chunked.' ♩
+
+SKIPPY:
+  ♩ Correct.
+    Chunked encoding tells urllib3:
+    each frame is its own unit.
+    Receive the frame header; receive the frame;
+    yield the frame immediately.
+    Do not wait for the next frame.
+    Do not wait for EOF.
+    Process what you have and move on.
+
+    The mock is rewritten.
+    The SSE stream is chunked.
+    TCP_NODELAY is set for good measure.
+    The frames arrive. ♩
+
+═══════════════════════════════════════════════════════════════════════
+
+ACT IV — THE GREEN CHECKMARKS
+
+[The test runs. Seven POSTs arrive at the mock:]
+
+  [1x]  /passthrough/register         id=dj.block_planner ✓
+  [3x]  /passthrough/patch            type=scene:full ✓
+  [2x]  /passthrough/intent_result    deck_swap=ok, select_1=deny ✓
+  [1x]  /passthrough/request_unmount  on stop ✓
+
+[deck_swap returns 'decks swapped'. select_1 returns 'no track 1' — correct,
+since the stub has no tracks. The scene tree has root id='root', two children.
+All colors are legal enum names. No hex. No dim_green. No capabilities field.
+The registration body is pixel-perfect against SkippyView's spec.]
+
+SKIPPY:
+  ♩ (triumphant, restrained)
+    Registration body: correct in every field.
+    Missing fields: none.
+    Banned fields: none.
+    ID correct: True.
+    Palette correct: True.
+    stream_url: http://127.0.0.1:7334/control
+    stream_origin: http://127.0.0.1:7334
+
+    Give SkippyView this address:
+    http://<mac-tailscale-host>:7334/manifest.json
+
+    Set SKIPPY_URL=http://127.0.0.1:47823 on same device.
+    The wire now speaks. ♩
+
+CAPTAIN:
+  ♩ (concise, which is how the Captain operates)
+    Brilliant. ♩
+
+═══════════════════════════════════════════════════════════════════════
+
+CAPTAIN'S WISDOM (End of Arc)
+
+  The protocol is locked.
+  The registration is aligned.
+  The endpoint is known.
+
+  Phase 1 facts:
+  - Seven colors. Seven focus targets.
+  - SSE requires chunked encoding or urllib3 will hold your events hostage.
+  - iter_lines(default) is not suitable for real-time SSE under Python requests.
+  - iter_content(chunk_size=None) + manual \n parser is the correct path.
+  - TCP_NODELAY alone does not fix HTTP/1.1 framing issues.
+
+  The next phase:
+  - Point SkippyView at the manifest endpoint.
+  - Confirm the real Skippy (port 47823) uses chunked encoding.
+  - If it doesn't, add an HTTP adapter or use httpx with HTTP/2.
+  - Phase 2: delta patches (JSON-diff instead of always scene:full).
+  - Phase 2: intent_args capability when SUIP v1.1 lands.
+
+  The DJ is ready.
+  The glasses are waiting.
+  The Captain's music will play.
+
+═══════════════════════════════════════════════════════════════════════
+END OF SCENE XI

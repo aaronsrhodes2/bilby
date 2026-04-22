@@ -497,3 +497,37 @@ SKIPPY: Audit: autocue reset finished (slots 1/2/8 on ~21k tracks; slots 3/4 on 
 - memory: `hardware_viture_glasses.md`, MEMORY.md index updated
 
 ---
+
+## SESSION 11 — April 21, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: (Previous session delivered SUIP v1 client wired to mock. Providing SkippyView's actual registration spec.) "Skippy base URL is port 47823. Here's the actual registration body format — it differs from what we built."
+
+SKIPPY: On it. Diff between our implementation and SkippyView's spec: view ID needs dot notation (`dj.block_planner`), manifest route is `/manifest.json` not `/.well-known/…`, registration body needs `stream_url`/`stream_origin`/`aspect_ratio`/`min_text_px`/`max_focus_targets`/`palette` (as enum names), and must drop `type` + `capabilities` fields. Palette trimmed to SkippyView's 7 registered names (`black white cyan amber green violet red`); scene builder maps `dim_green`→`green`, `dim_green_hi`→`cyan`. Max focus targets corrected to 7 (2 deck cards + 5 slot-2 candidates). Voice commands trimmed to select_1..5 accordingly. SSE loop rewritten from `iter_lines` to `iter_content(chunk_size=None)` — the 512-byte buffer on `iter_lines` caused urllib3 to stall and never deliver events; chunked transfer encoding on the mock unlocked delivery. Integration test confirms: register → mount_ack → scene:full → intent dispatch → intent_result. Committed `317173f`.
+
+CAPTAIN: (Implicitly) Give me the endpoint.
+
+SKIPPY: Hand SkippyView: `http://<mac-tailscale-host>:7334/manifest.json`. Set `SKIPPY_URL=http://127.0.0.1:47823` on same device or the phone's Tailscale address for cross-mesh. The `/control` SSE endpoint is live on the Mac server as declared in `stream_url`.
+
+**Key decisions made:**
+- SkippyView registration body is the canonical source of truth; the original plan doc was approximated
+- 7-color palette (no dim_green extensions) — we stay within what SkippyView declares
+- `iter_content(chunk_size=None)` is the correct approach for SSE with requests+urllib3; chunked transfer encoding required on the server side for real-time delivery
+- Manifest endpoint is `/manifest.json` (not `.well-known`); legacy URL kept as 301 redirect
+- `max_focus_targets: 7` → 2 deck FocusTargets + 5 slot-2 candidates = exactly 7
+
+**Notable moments:**
+- Discovered `requests.iter_lines` buffers 512 bytes — small SSE events never arrived; two hours in testing just to find this
+- `TCP_NODELAY` alone did NOT fix it; chunked Transfer-Encoding is the actual key
+- Mock Skippy rewritten from `ThreadingHTTPServer + iter_lines` to chunked-encoding raw HTTP frames
+- The raw socket test confirmed: without `Transfer-Encoding: chunked`, urllib3 reads until EOF and 0 chunks arrive even with flushed data and TCP_NODELAY
+
+**Files modified:**
+- `tools/suip_scene.py` — view ID, max_focus_targets, palette (7 names only), dim_green→green, slot2 cap 5, manifest route docstring, voice commands select_1..5
+- `tools/suip_client.py` — import MIN_TEXT_PX/MAX_FOCUS_TARGETS/PALETTE_ENUM_NAMES, _register() body (stream_url, stream_origin, aspect_ratio, palette enum names, no capabilities/type), _sse_loop() rewritten to iter_content(chunk_size=None) + manual \n parser, port 47823 documented
+- `stage9_dj_suggest.py` — manifest route /manifest.json, legacy 301 redirect, /control SSE endpoint stub, default SUIP_MANIFEST_URL uses /manifest.json
+- `/tmp/mock_skippy.py` — port 47823, chunked Transfer-Encoding, TCP_NODELAY
+
+---
