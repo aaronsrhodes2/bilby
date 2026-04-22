@@ -1526,20 +1526,24 @@ body.passthrough #show-btn,
 body.passthrough #lyr-tooltip,
 body.passthrough #activity-bar{display:none !important}
 body.passthrough #deck-bar{padding:4px 10px;min-height:26px;border-bottom:0}
-body.passthrough #cols{grid-template-columns:0.75fr 1fr 1fr;gap:10px}
-/* Column 1 — Now Playing + Deck A/B (compact for glasses) */
+body.passthrough #cols{grid-template-columns:0.75fr 1fr 1fr;gap:8px}
+/* Column 1 — Selected Song + Deck A/B (compact for glasses) */
 body.passthrough #c1 .col-body{padding:0}
-body.passthrough .anchor-box{background:#000;border:1px solid #003300;padding:10px 12px;border-radius:3px}
-body.passthrough .anchor-box .deck-tag{color:#00FF00;opacity:0.8}
-body.passthrough .anchor-box .an{font-size:15px}
+body.passthrough #c1 .empty{display:none}  /* hide "Load a track in Traktor" placeholder */
+body.passthrough .anchor-box{background:#000;border:1px solid #003300;padding:8px 10px;border-radius:3px}
+body.passthrough .anchor-box .deck-tag{color:#00FF00;opacity:0.8;font-size:9px}
+body.passthrough .anchor-box .an{font-size:13px;margin-bottom:3px}
 body.passthrough .anchor-box .an .aa{color:#00FF00}
 body.passthrough .anchor-box .an .at{color:#FFF}
-body.passthrough .anchor-box .anc-art{width:48px;height:48px}
-body.passthrough .deck-cards{grid-template-columns:1fr;gap:6px;margin-top:8px}
-body.passthrough .dc{background:#000;border:1px solid #003300;padding:8px 10px;border-radius:3px;position:relative}
+body.passthrough .anchor-box .anc-art{width:40px;height:40px;margin:0 0 4px 8px}
+body.passthrough .anchor-box .meta{font-size:11px}
+body.passthrough .deck-cards{grid-template-columns:1fr;gap:4px;margin-top:6px}
+body.passthrough .dc{background:#000;border:1px solid #003300;padding:6px 8px;border-radius:3px;position:relative}
 body.passthrough .dc-loaded{border-color:#00AA00}
 body.passthrough .dc-playing{border-color:#00FF00;background:#001500;box-shadow:0 0 6px #00FF0033}
-body.passthrough .dc .dc-label{color:#00FF00;font-size:10px;letter-spacing:2px}
+body.passthrough .dc .dc-label{color:#00FF00;font-size:9px;letter-spacing:2px}
+body.passthrough .dc .dc-name{font-size:12px;line-height:1.2}
+body.passthrough .dc .dc-meta{font-size:10px}
 .dc-playing-badge{display:inline-block;color:#00FF00;font-weight:bold;font-size:10px;letter-spacing:1px;margin-left:6px;padding:1px 5px;border:1px solid #00FF00;border-radius:2px;animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.55}}
 body.passthrough .dc .dc-artist{color:#00FF00}
@@ -1547,15 +1551,26 @@ body.passthrough .dc .dc-title{color:#FFF}
 body.passthrough .dc .dc-meta{color:#88FF88;font-size:11px;opacity:0.8}
 body.passthrough .dc-empty{color:#004400;font-size:11px}
 body.passthrough .col-hdr{font-size:11px;letter-spacing:2px;opacity:0.7;border-bottom:1px solid #003300;color:#00FF00}
-body.passthrough .tk{background:#000;border:1px solid #003300;padding:10px 12px 10px 56px;font-size:15px}
-body.passthrough .art-thumb{left:10px;right:auto;top:10px}
-body.passthrough .tk .tn{padding-right:0 !important}
+/* Compressed candidate cards (columns 2 & 3) — tuned for Viture 1920×1200 */
+body.passthrough .tk{background:#000;border:1px solid #003300;padding:5px 8px 5px 42px;font-size:12px;margin-bottom:3px}
+body.passthrough .art-thumb{width:32px;height:32px;left:6px;right:auto;top:6px;opacity:0.8}
+body.passthrough .tk .tn{padding-right:0 !important;font-size:13px;line-height:1.2;margin-bottom:2px}
 body.passthrough .tk.sel{border-color:#00FF00;background:#001500;box-shadow:0 0 8px #00FF0033}
 body.passthrough .tk:hover{border-color:#00AA00}
-body.passthrough .tn{font-size:15px;line-height:1.3}
-body.passthrough .meta{font-size:13px}
-body.passthrough .lyric-summary{font-size:12px;color:#88FF88}
-body.passthrough .art-thumb{opacity:0.75}
+body.passthrough .meta{font-size:10px;gap:5px;margin-top:1px}
+body.passthrough .lyric-summary{font-size:10px;color:#88FF88;line-height:1.2;margin-top:2px}
+body.passthrough .col-body{padding:6px 8px;overflow:hidden}
+body.passthrough .slot-num{font-size:12px;margin-right:6px;min-width:18px}
+body.passthrough .bg-dest{font-size:9px;letter-spacing:1.5px;color:#66FF66;margin:6px 0 3px 0;padding-bottom:2px}
+/* Dynamic fit — single-line titles; JS shrinks font until they fit without cutoff */
+body.passthrough .tn,
+body.passthrough .dc-name,
+body.passthrough .anchor-box .an{white-space:nowrap}
+body.passthrough .lyric-summary{white-space:nowrap}
+/* Viewport-level constraints: no scrollbars anywhere */
+html,body.passthrough{overflow:hidden;height:100vh}
+body.passthrough #cols{overflow:hidden;min-height:0;flex:1}
+body.passthrough .col-body{overflow:hidden}
 body.passthrough #q{font-size:15px;padding:6px 10px;background:#000;border:1px solid #003300;color:#00FF00}
 body.passthrough #q::placeholder{color:#005500}
 body.passthrough #q:focus{border-color:#00FF00;box-shadow:0 0 6px #00FF0044}
@@ -1668,6 +1683,9 @@ function toggleTheme(){
   if(nxt!=='night')document.body.classList.add(nxt);
   document.getElementById('theme-btn').textContent=THEME_ICONS[nxt];
   localStorage.setItem('theme',nxt);
+  // Clear any inline font-size the fit routine set (non-passthrough doesn't need it)
+  document.querySelectorAll('[style*="font-size"]').forEach(el=>{el.style.fontSize=''});
+  if(typeof fitPassthrough==='function')fitPassthrough();
 }
 function reloadArt(){
   const btn=document.getElementById('art-reload-btn');
@@ -2054,6 +2072,7 @@ function renderDeckCards(){
     if(ab) ab.insertAdjacentHTML('afterend',html);
     else b1.innerHTML=`<div class="empty">Load a track in Traktor<br>— or search above.</div>`+html;
   }
+  if(typeof fitPassthrough==='function')fitPassthrough();
 }
 
 let _rescueTrack=null;
@@ -2237,13 +2256,60 @@ async function loadAnchor(track,deck){
   renderSlot2(0);
   renderSlot3(d.slot3);
   if(S2.length)slot2=S2[0];
+  fitPassthrough();
 }
 
 // ── Slot 2 ──────────────────────────────────────────────────────────────────
 function renderSlot2(selIdx){
   if(!S2.length){b2.innerHTML='<div class="empty">No close matches found</div>';return}
   b2.innerHTML=S2.map((t,i)=>tkHtml(t,i,i===selIdx,true)).join('');
+  fitPassthrough();
 }
+
+// ── Dynamic auto-fit (passthrough only): shrink font-size per line until
+// the text fits without wrapping or being cut off. Also shrinks cards if
+// the vertical total exceeds the column body. Legibility floor = 9px.
+function fitPassthrough(){
+  if(!document.body.classList.contains('passthrough'))return;
+  requestAnimationFrame(()=>{
+    // 1) Horizontal fit — shrink title/summary lines to avoid horizontal overflow
+    const targets=document.querySelectorAll('body.passthrough .tn, body.passthrough .dc-name, body.passthrough .anchor-box .an, body.passthrough .lyric-summary');
+    targets.forEach(el=>{
+      el.style.fontSize='';  // reset
+      const cs=getComputedStyle(el);
+      let fs=parseFloat(cs.fontSize);
+      const minFs=el.classList.contains('lyric-summary')?9:10;
+      let guard=40;
+      while(el.scrollWidth>el.clientWidth+1 && fs>minFs && guard-->0){
+        fs-=0.5;
+        el.style.fontSize=fs+'px';
+      }
+    });
+    // 2) Vertical fit — if any column body overflows, shrink all card fonts a step
+    ['b2','b3'].forEach(id=>{
+      const body=document.getElementById(id);
+      if(!body)return;
+      let guard=12;
+      while(body.scrollHeight>body.clientHeight+1 && guard-->0){
+        const cards=body.querySelectorAll('.tk');
+        let stepped=false;
+        cards.forEach(c=>{
+          const cs=getComputedStyle(c);
+          let fs=parseFloat(cs.fontSize);
+          if(fs>10){c.style.fontSize=(fs-0.5)+'px';stepped=true}
+          const meta=c.querySelector('.meta');
+          if(meta){
+            const mfs=parseFloat(getComputedStyle(meta).fontSize);
+            if(mfs>9){meta.style.fontSize=(mfs-0.5)+'px';stepped=true}
+          }
+        });
+        if(!stepped)break;
+      }
+    });
+  });
+}
+// Refit on window resize
+window.addEventListener('resize',()=>fitPassthrough());
 async function pickSlot2(i){
   slot2=S2[i];renderSlot2(i);
   // Clear search bar — the selection is made, search context no longer needed
@@ -2263,6 +2329,7 @@ function renderSlot3(groups){
       return`<div class="tk" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
       ${a}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
       ${lyricLine(t)}${meta(t,true)}</div>`}).join('')}</div>`).join('');
+  fitPassthrough();
 }
 </script>
 </body>
