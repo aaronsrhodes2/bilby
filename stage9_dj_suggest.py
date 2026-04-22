@@ -31,6 +31,7 @@ Save and close Preferences. Traktor will now broadcast track info here.
 
 import json
 import queue
+import re
 import subprocess
 import sys
 import termios
@@ -61,6 +62,25 @@ OSC_PORT        = 9000
 
 RANKING_TO_STARS = {0: 0, 51: 1, 102: 2, 153: 3, 204: 4, 255: 5}
 
+# ── Instrumental detection ────────────────────────────────────────────────────
+# Unifies every signal we have today (title patterns, STT theme tag, STT-generated
+# "Instrumental — no vocals detected" summary). New signals plug in here and all
+# consumers (UI badge, left-border color, future filters) pick them up for free.
+_INSTRUMENTAL_TITLE_RE = re.compile(
+    r'\b(instrumental|inst\.?|no[ -]?vocals?|karaoke|ambient\s+mix|dub\s+mix)\b',
+    re.I,
+)
+def is_instrumental(title: str, lyric_theme: str | None, lyric_summary: str | None) -> bool:
+    if _INSTRUMENTAL_TITLE_RE.search(title or ""):
+        return True
+    if lyric_theme and lyric_theme.strip().lower() == "instrumental":
+        return True
+    s = (lyric_summary or "").strip().lower()
+    if s.startswith("instrumental") or s.startswith("instrumental —") or s.startswith("[instrumental]"):
+        return True
+    return False
+
+
 @dataclass
 class Track:
     path:     str
@@ -82,6 +102,8 @@ class Track:
         rep  = reputation_for(self.artist)
         lyr  = lyrics_for(self.path)
         sflag = song_flag_for(self.artist, self.title)
+        lyric_summary = lyr["summary"] if lyr else (self.comment or None)
+        lyric_theme   = lyr["theme"]   if lyr else None
         return {
             "path":         self.path,
             "artist":       self.artist,
@@ -95,10 +117,11 @@ class Track:
             "rep_tier":     rep["tier"]     if rep else None,
             "rep_summary":  rep["summary"]  if rep else None,
             "song_flag":    sflag,
-            "lyric_summary":lyr["summary"]  if lyr else (self.comment or None),
-            "lyric_theme":  lyr["theme"]    if lyr else None,
+            "lyric_summary":lyric_summary,
+            "lyric_theme":  lyric_theme,
             "lyric_flags":  lyr["flags"]    if lyr else [],
             "art_url":      self.art_url or "",
+            "is_instrumental": is_instrumental(self.title, lyric_theme, lyric_summary),
         }
 
 
@@ -1440,6 +1463,15 @@ body{background:var(--bg);color:var(--text);font-family:'Atkinson Hyperlegible',
 .rep-accused{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#431407;color:#fb923c;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .rep-settled{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#052e16;color:#86efac;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
 .lyric-flag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#2d1b4e;color:#c4b5fd;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px}
+.instr-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;background:#1a1b3a;color:#a5b4fc;font-weight:bold;letter-spacing:1px;cursor:help;margin-left:4px;border:1px solid #4338ca44}
+.tk.instrumental{border-left:3px solid #818cf8}
+.anchor-box.instrumental{border-left:3px solid #818cf8}
+body.passthrough .instr-badge{background:#000;color:#a5b4fc;border-color:#4338ca}
+body.passthrough .tk.instrumental{border-left-color:#818cf8;border-left-width:3px}
+body.passthrough .anchor-box.instrumental{border-left:3px solid #818cf8}
+body.day .instr-badge{background:#e6e4f0;color:#5b4cc9;border-color:#5b4cc9}
+body.lcars .instr-badge{background:#9999CC;color:#000;border:none;border-radius:20px;font-family:'Oswald',sans-serif}
+body.borg .instr-badge{background:#000;color:#00FFFF;border:1px dashed #00AAAA}
 .lyric-summary{font-size:11px;color:var(--lyric);font-style:italic;margin-top:3px;white-space:normal;overflow-wrap:break-word;cursor:default}
 #lyr-tooltip{display:none;position:fixed;z-index:9999;pointer-events:none}
 #lyr-tooltip .tk{zoom:2;min-width:220px;max-width:260px;cursor:default!important;border-color:#444!important;background:#181818!important;margin-bottom:0!important;box-shadow:0 8px 32px rgba(0,0,0,.8)}
@@ -2101,6 +2133,9 @@ function lyricBadges(t){
     extreme_violence:'🚫 EXTREME VIOLENCE'};
   return t.lyric_flags.map(f=>`<span class="lyric-flag" title="Lyric content warning">${labels[f]||'🚫 FLAGGED'}</span>`).join('');
 }
+function instrBadge(t){
+  return t.is_instrumental?'<span class="instr-badge" title="Instrumental — no vocals">♬ INSTR</span>':'';
+}
 function lyricLine(t){
   if(!t.lyric_summary)return'';
   return`<div class="lyric-summary">♪ ${esc(t.lyric_summary)}</div>`;
@@ -2110,7 +2145,8 @@ function tipCardHtml(t){
     ?`<div class="lyric-summary" style="white-space:normal;overflow-wrap:break-word">♪ ${esc(t.lyric_summary)}</div>`
     :'';
   const artHtml=t.art_url?`<img class="tip-art" src="${t.art_url}" onerror="this.style.display='none'" alt="">`:'';
-  return`<div class="tk">${artHtml}<div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>${lyrHtml}${meta(t,true)}</div>`;
+  const cls='tk'+(t.is_instrumental?' instrumental':'');
+  return`<div class="${cls}">${artHtml}<div class="tn"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${instrBadge(t)}${lyricBadges(t)}</div>${lyrHtml}${meta(t,true)}</div>`;
 }
 function meta(t,showScore){
   return`<div class="meta">
@@ -2121,8 +2157,9 @@ function meta(t,showScore){
 function tkHtml(t,idx,sel,showScore){
   const slotNum=`<span class="slot-num">[${idx+1}]</span>`;
   const artHtml=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:'';
-  return`<div class="tk${sel?' sel':''}" id="s2-${idx}" data-track="${esc(JSON.stringify(t))}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-    ${artHtml}<div class="tn" style="${t.art_url?'padding-right:42px':''}">${slotNum}<span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+  const cls='tk'+(sel?' sel':'')+(t.is_instrumental?' instrumental':'');
+  return`<div class="${cls}" id="s2-${idx}" data-track="${esc(JSON.stringify(t))}" onclick="pickSlot2(${idx});copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+    ${artHtml}<div class="tn" style="${t.art_url?'padding-right:42px':''}">${slotNum}<span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${instrBadge(t)}${lyricBadges(t)}</div>
     ${lyricLine(t)}${meta(t,showScore)}</div>`;
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -2399,9 +2436,10 @@ async function loadAnchor(track,deck){
   // Replace anchor box only; keep deck cards
   const cardsEl=b1.querySelector('.deck-cards');
   const ancArt=track.art_url?`<img class="anc-art" src="${track.art_url}" onerror="this.style.display='none'" alt="">`:'';
-  const badges=(repBadge(track)+lyricBadges(track));
+  const badges=(repBadge(track)+instrBadge(track)+lyricBadges(track));
   const badgeRow=badges?`<div class="anchor-badges" style="margin-top:6px">${badges}</div>`:'';
-  const anchorHtml=`<div class="anchor-box" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
+  const boxCls='anchor-box'+(track.is_instrumental?' instrumental':'');
+  const anchorHtml=`<div class="${boxCls}" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
     ${meta(track,false)}${badgeRow}${lyricLine(track)}</div>`;
   if(cardsEl){
@@ -2531,8 +2569,9 @@ function renderSlot3(groups){
   b3.innerHTML=groups.map(g=>`
     <div class="bg"><div class="bg-dest">→ ${esc(g.destination)}</div>
     ${g.tracks.map(t=>{const a=t.art_url?`<img class="art-thumb" src="${t.art_url}" loading="lazy" onerror="this.style.display='none'" alt="">`:''
-      return`<div class="tk" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
-      ${a}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${lyricBadges(t)}</div>
+      const c='tk'+(t.is_instrumental?' instrumental':'');
+      return`<div class="${c}" data-track="${esc(JSON.stringify(t))}" onclick="copyTrack('${esc(t.artist)}','${esc(t.title)}')">
+      ${a}<div class="tn" style="${t.art_url?'padding-right:42px':''}"><span class="ta">${esc(t.artist)}</span><span style="color:#555"> — </span><span class="tt">${esc(t.title)}</span>${repBadge(t)}${instrBadge(t)}${lyricBadges(t)}</div>
       ${lyricLine(t)}${meta(t,true)}</div>`}).join('')}</div>`).join('');
   fitPassthrough();
 }
