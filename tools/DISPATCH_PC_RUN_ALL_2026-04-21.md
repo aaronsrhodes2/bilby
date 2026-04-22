@@ -28,6 +28,52 @@ resumable — safe to stop and restart at any point.
 
 ---
 
+## Job 0 — Bootstrap the Dispatch Watcher (ONE-TIME)
+
+**Purpose:** after this first paste-and-run, all future dispatches are picked up
+automatically. The Mac pushes a `DISPATCH_PC_*.md` to git; the watcher on this
+PC polls origin every 60s, pulls, extracts the "Run this" block, and invokes
+Claude in bypass-permissions mode on the dispatch. No more manual pastes.
+
+**Script:** `tools/pc_dispatch_watcher.py` (already in repo as of commit `394c6ca+`).
+
+**Install (Windows, user-level Scheduled Task, runs on login):**
+
+```powershell
+cd D:\Aaron\development\music-collection
+git pull
+python tools\pc_dispatch_watcher.py --install
+# Kick it off immediately without waiting for next login:
+schtasks /run /tn MusicOrganizer-DispatchWatcher
+```
+
+**Verify it's running:**
+
+```powershell
+schtasks /query /tn MusicOrganizer-DispatchWatcher /v /fo list | Select-String "Status|Last Run"
+python tools\pc_dispatch_watcher.py --status
+```
+
+**Kill switch:** if you ever need to stop the watcher, push an empty file
+called `tools/STOP_WATCHER` to git main. The watcher sees it within 60s and
+exits cleanly. Remove the file to re-enable. Or locally:
+`python tools\pc_dispatch_watcher.py --uninstall` to delete the scheduled task.
+
+**Requirements for the watcher:**
+- `git` on PATH (already present — you use it for pulls)
+- `claude` CLI on PATH (Claude Code CLI, authenticated). If not installed:
+  <https://docs.claude.com/en/docs/claude-code/quickstart>
+- Repo cloned at the expected remote `aaronsrhodes2/music-organizer-manydeduptrak`
+  (watcher verifies this before acting)
+
+**Note:** the watcher will immediately notice *this* dispatch file as
+unprocessed on first run, and try to execute jobs 1 and 2 itself. That's fine —
+either you paste the prompt below into Claude first (the watcher's next poll
+will skip it because it'll see the file in `state/pc_dispatch_log.json`), or
+let the watcher run it autonomously. Pick whichever path you prefer.
+
+---
+
 ## Job 1 — Autocue Slots 3 & 4 (librosa audio pass)
 
 **Script:** `tools/stage10_autocue.py` (already in repo)
@@ -93,21 +139,30 @@ Both long jobs can run **in parallel** if the machine has the thermal headroom. 
 
 ---
 
-## Run this — paste into Claude on the PC
+## Run this — paste into Claude on the PC (one-time; future dispatches auto-run)
 
-> You are Claude running on the Skippy PC (Windows, 4070 Ti, Ollama + faster-whisper installed). The Mac has dispatched three jobs. Audit progress, resume where possible, and launch the remaining work.
+> You are Claude running on the Skippy PC (Windows, 4070 Ti, Ollama + faster-whisper installed). The Mac has dispatched three jobs plus a watcher-install. Audit progress, bootstrap the watcher for autonomous future runs, and launch the remaining work.
 >
-> 1. `cd D:\Aaron\development\music-collection && git pull`
-> 2. Report the current state of:
+> 0. **BOOTSTRAP THE WATCHER (one-time):**
+>     - `cd D:\Aaron\development\music-collection && git pull`
+>     - Confirm `tools/pc_dispatch_watcher.py` exists. Install as a Scheduled Task:
+>         `python tools\pc_dispatch_watcher.py --install`
+>     - Start it now without waiting for next login: `schtasks /run /tn MusicOrganizer-DispatchWatcher`
+>     - Verify it's active: `python tools\pc_dispatch_watcher.py --status` (should show an empty `processed` list).
+>     - Seed the log so the watcher DOESN'T re-run *this* dispatch after you finish jobs 1–2 by hand. Append the current filename to processed:
+>         `python -c "import json,pathlib; p=pathlib.Path('state/pc_dispatch_log.json'); s=json.loads(p.read_text()) if p.exists() else {'processed':[]}; s.setdefault('processed',[]).append('DISPATCH_PC_RUN_ALL_2026-04-21.md'); p.write_text(json.dumps(s,indent=2))"`
+> 1. Report the current state of:
 >     - `corrected_traktor/collection.nml` HOTCUE slot distribution (count tracks with HOTCUE=2 and HOTCUE=3 set — these are the targets of Job 1)
 >     - `state/lyrics_dedup.json` entry count and `theme=instrumental` count
 >     - `state/autocue_progress.json` "done" list length
 >     - Presence and size of `state/stt_progress.json` (or whatever `stage9_stt.py` writes for progress)
-> 3. Compare against the baseline table in `tools/DISPATCH_PC_RUN_ALL_2026-04-21.md` and tell the Captain which jobs have already started and how far they've gotten.
-> 4. Kick off Job 1 (`python tools\stage10_autocue.py --all --apply`) in the background and note its PID.
-> 5. Kick off Job 2 (`python stage9_stt.py --run`) in a second background process and note its PID.
-> 6. Report both PIDs, the log file paths, and an ETA for each.
-> 7. Do not wait for either to complete. Commit the NML + state files every 2 hours or whenever a job exits cleanly; push to origin.
-> 8. If either job errors, capture the last 50 lines of stderr and report back.
+> 2. Compare against the baseline table in `tools/DISPATCH_PC_RUN_ALL_2026-04-21.md` and tell the Captain which jobs have already started and how far they've gotten.
+> 3. Kick off Job 1 (`python tools\stage10_autocue.py --all --apply`) in the background and note its PID.
+> 4. Kick off Job 2 (`python stage9_stt.py --run`) in a second background process and note its PID.
+> 5. Report both PIDs, the log file paths, and an ETA for each.
+> 6. Do not wait for either to complete. Commit the NML + state files every 2 hours or whenever a job exits cleanly; push to origin.
+> 7. If either job errors, capture the last 50 lines of stderr and report back.
 >
 > Permission: bypass mode — proceed without prompting for each command. If you hit a genuinely unsafe operation (overwriting collection.nml without backup, deleting files, etc.), stop and ask.
+>
+> **After this first run, every future `DISPATCH_PC_*.md` file I push will be picked up by the watcher automatically within 60 seconds. Respond to those dispatches the same way — audit, resume, execute, commit, push.**
