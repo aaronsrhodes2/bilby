@@ -1583,6 +1583,37 @@ body.passthrough #setlist-btn{background:#000;color:#00FF00;border:1px solid #00
 body.passthrough .panic-btn:hover,
 body.passthrough #swap-btn:hover,
 body.passthrough #setlist-btn:hover{background:#001500;border-color:#00FF00}
+/* ── AR Spatial Zones: TOP=world · BOTTOM=self · CORNERS=glance · SIDES=minimal */
+#deck-strip,#selected-strip{display:none}  /* Hidden in non-passthrough themes */
+body.passthrough{display:flex;flex-direction:column;height:100vh}
+body.passthrough #hdr           {order:1;flex-shrink:0}
+body.passthrough #deck-strip    {order:2;flex-shrink:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 10px;border-bottom:1px solid #003300}
+body.passthrough #cols          {order:3;flex:1;min-height:0;grid-template-columns:1fr 1fr;gap:8px;overflow:hidden}
+body.passthrough #c1            {display:none !important}  /* deck state is in TOP strip; anchor is in BOTTOM strip */
+body.passthrough #selected-strip{order:4;flex-shrink:0;padding:6px 10px;border-top:1px solid #003300}
+body.passthrough #search-wrap   {order:5;flex-shrink:0;padding:4px 10px}
+body.passthrough #deck-bar      {order:6;flex-shrink:0;border-top:0}
+/* Deck strip cells */
+body.passthrough .ds-cell{background:#000;border:1px solid #003300;border-radius:3px;padding:6px 10px;display:flex;align-items:center;gap:8px;position:relative;overflow:hidden;white-space:nowrap}
+body.passthrough .ds-cell.ds-playing{border-color:#00FF00;background:#001500;box-shadow:0 0 6px #00FF0033}
+body.passthrough .ds-cell.ds-empty{opacity:0.4;border-style:dashed}
+body.passthrough .ds-label{color:#00FF00;font-size:9px;letter-spacing:2px;font-weight:bold;flex-shrink:0}
+body.passthrough .ds-play{color:#00FF00;font-size:11px;flex-shrink:0}
+body.passthrough .ds-art{width:24px;height:24px;object-fit:cover;border-radius:2px;flex-shrink:0}
+body.passthrough .ds-artist{color:#00FF00;font-size:12px}
+body.passthrough .ds-sep{color:#555;font-size:12px}
+body.passthrough .ds-title{color:#FFF;font-size:12px}
+body.passthrough .ds-bpm{color:#FFCC00;font-size:11px;margin-left:auto;flex-shrink:0}
+/* Selected strip (BOTTOM) */
+body.passthrough .ss-label{color:#00FF00;font-size:9px;letter-spacing:2px;font-weight:bold;margin-bottom:3px}
+body.passthrough .ss-row{display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+body.passthrough .ss-art{width:32px;height:32px;object-fit:cover;border-radius:3px;flex-shrink:0}
+body.passthrough .ss-artist{color:#00FF00;font-size:14px}
+body.passthrough .ss-sep{color:#555}
+body.passthrough .ss-title{color:#FFF;font-size:14px}
+body.passthrough .ss-meta{color:#88FF88;font-size:11px;margin-left:auto;flex-shrink:0}
+body.passthrough #selected-strip.ss-empty{opacity:0.5}
+body.passthrough #selected-strip.ss-empty .ss-row{color:#444;font-size:11px}
 </style>
 </head>
 <body>
@@ -1595,6 +1626,9 @@ body.passthrough #setlist-btn:hover{background:#001500;border-color:#00FF00}
   <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg → Passthrough">🌙</button>
   <button id="art-reload-btn" onclick="reloadArt()" title="Reload album art index (after Syncthing sync)">🖼</button>
 </div>
+<!-- Passthrough-only strips (hidden in all other themes via CSS) -->
+<div id="deck-strip"></div>
+<div id="selected-strip"></div>
 <div id="deck-bar">
   <span class="deck-pill" id="pill-a">DECK A</span>
   <span class="deck-pill" id="pill-b">DECK B</span>
@@ -1685,6 +1719,8 @@ function toggleTheme(){
   localStorage.setItem('theme',nxt);
   // Clear any inline font-size the fit routine set (non-passthrough doesn't need it)
   document.querySelectorAll('[style*="font-size"]').forEach(el=>{el.style.fontSize=''});
+  // Render the passthrough strips fresh — may have been empty/stale
+  if(typeof renderDeckStrip==='function'){renderDeckStrip();renderSelectedStrip();}
   if(typeof fitPassthrough==='function')fitPassthrough();
 }
 function reloadArt(){
@@ -2072,7 +2108,40 @@ function renderDeckCards(){
     if(ab) ab.insertAdjacentHTML('afterend',html);
     else b1.innerHTML=`<div class="empty">Load a track in Traktor<br>— or search above.</div>`+html;
   }
+  renderDeckStrip();
   if(typeof fitPassthrough==='function')fitPassthrough();
+}
+
+// ── Passthrough TOP strip: horizontal Deck A / Deck B readout (world zone) ──
+function renderDeckStrip(){
+  const el=document.getElementById('deck-strip');
+  if(!el)return;
+  el.innerHTML=['a','b'].map(d=>{
+    const t=deckTracks[d];
+    const playing=deckPlaying[d];
+    const cls='ds-cell'+(!t?' ds-empty':playing?' ds-playing':'');
+    const label=`DECK ${d.toUpperCase()}`;
+    if(!t)return`<div class="${cls}"><span class="ds-label">${label}</span><span class="ds-title" style="color:#444">—</span></div>`;
+    const art=t.art_url?`<img class="ds-art" src="${t.art_url}" onerror="this.style.display='none'" alt="">`:'';
+    const play=playing?'<span class="ds-play">▶</span>':'';
+    return`<div class="${cls}"><span class="ds-label">${label}</span>${play}${art}<span class="ds-artist">${esc(t.artist)}</span><span class="ds-sep">—</span><span class="ds-title">${esc(t.title)}</span><span class="ds-bpm">${t.bpm||'?'} BPM</span></div>`;
+  }).join('');
+}
+
+// ── Passthrough BOTTOM strip: Selected Song readout (self zone) ──
+function renderSelectedStrip(){
+  const el=document.getElementById('selected-strip');
+  if(!el)return;
+  if(!anchor){
+    el.className='ss-empty';
+    el.innerHTML=`<div class="ss-label">① SELECTED SONG</div><div class="ss-row">Pick one from column ② — say "select 3" or click</div>`;
+    return;
+  }
+  el.className='';
+  const art=anchor.art_url?`<img class="ss-art" src="${anchor.art_url}" onerror="this.style.display='none'" alt="">`:'';
+  const starsStr=typeof stars==='function'?stars(anchor.stars||0):'';
+  el.innerHTML=`<div class="ss-label">① SELECTED SONG</div>
+    <div class="ss-row">${art}<span class="ss-artist">${esc(anchor.artist)}</span><span class="ss-sep">—</span><span class="ss-title">${esc(anchor.title)}</span><span class="ss-meta">${anchor.bpm||'?'} BPM · ${esc(anchor.key||'—')} · ${esc(anchor.genre||'—')} ${starsStr}</span></div>`;
 }
 
 let _rescueTrack=null;
@@ -2134,6 +2203,10 @@ function connectSSE(){
   };
 }
 connectSSE();
+// Render the passthrough strips once at init so they show an empty-state
+// instead of being blank when the theme is cycled in
+renderDeckStrip();
+renderSelectedStrip();
 
 async function restoreDeckStatus(){
   try{
@@ -2256,6 +2329,7 @@ async function loadAnchor(track,deck){
   renderSlot2(0);
   renderSlot3(d.slot3);
   if(S2.length)slot2=S2[0];
+  renderSelectedStrip();
   fitPassthrough();
 }
 
@@ -2273,7 +2347,14 @@ function fitPassthrough(){
   if(!document.body.classList.contains('passthrough'))return;
   requestAnimationFrame(()=>{
     // 1) Horizontal fit — shrink title/summary lines to avoid horizontal overflow
-    const targets=document.querySelectorAll('body.passthrough .tn, body.passthrough .dc-name, body.passthrough .anchor-box .an, body.passthrough .lyric-summary');
+    const targets=document.querySelectorAll(
+      'body.passthrough .tn, '+
+      'body.passthrough .dc-name, '+
+      'body.passthrough .anchor-box .an, '+
+      'body.passthrough .lyric-summary, '+
+      'body.passthrough #deck-strip .ds-cell, '+
+      'body.passthrough #selected-strip .ss-row'
+    );
     targets.forEach(el=>{
       el.style.fontSize='';  // reset
       const cs=getComputedStyle(el);
