@@ -1,0 +1,282 @@
+OPERATIC PLAY — SCENE 9
+THROUGH THE GLASS, DARKLY
+(A HUD Is Born)
+
+April 21, 2026
+
+════════════════════════════════════════════════════════════════════════════════
+
+DRAMATIS PERSONAE
+
+  CAPTAIN AARON RHODES  — DJ, architect of the read-only UI paradigm,
+                          wearer of Viture Luma Ultra AR glasses
+
+  SKIPPY THE MAGNIFICENT — Ship's AI, reluctant web developer,
+                           student of spatial cognition
+
+  THE SKIPPY PC         — A silent chorus. 4070 Ti. CUDA. Awaiting a paste.
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT I — THE BLACK CANVAS
+
+[Morning. The DJ Block Planner is open. Four themes cycle —
+ Night, Day, LCARS, Borg. The Captain squints at the screen
+ through glasses that are not yet on his face.]
+
+CAPTAIN:
+♩ A fifth theme I desire —
+  one called "passthrough."
+  #000000 black as the void between stars,
+  so the real world bleeds through
+  when I wear the glass. ♩
+
+SKIPPY:
+♩ A mode, not a theme —
+  I shall hide the track count,
+  the deck pills, the waiting text,
+  the reset button, the OSC lamp,
+  the Show Setup, the tooltip,
+  the activity bar —
+  all retired into the black. ♩
+
+[The fifth theme is born. 🕶 icon added.
+ The cycle expands: Night → Day → LCARS → Borg → Passthrough.
+ Pure black reigns.]
+
+CAPTAIN:
+♩ And number each candidate,
+  so I may call them by number —
+  "select three" shall make it so. ♩
+
+SKIPPY:
+♩ Keyword grammar, seven verbs strong:
+  swap decks, save me, surprise me,
+  open setlist, open show,
+  select N, select A or B.
+  Enter in the search box fires the match.
+  No match? Falls through to search. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT II — THE FOUR ZONES
+
+[The Captain has been reading about cognition.]
+
+CAPTAIN:
+♩ Hear me on spatial law.
+  TOP is the world — what comes in from outside.
+  BOTTOM is the self — my words, my choices.
+  CORNERS are for glance — things I dismiss often.
+  SIDES are for manipulation — minimise these,
+    for I shall not touch the UI
+    unless I must. ♩
+
+SKIPPY:
+♩ Flex-column body with order directives —
+  hdr order one,
+  deck-strip order two,
+  cols flex:1 filling the middle,
+  selected-strip order four,
+  search wrap order five,
+  action buttons order six.
+  Zones become law. ♩
+
+[A first attempt: strips top and bottom, 2-column middle.
+ The Captain frowns through his glasses.]
+
+CAPTAIN:
+♩ No — big card for the Selected Song,
+  filling the space between decks and title.
+  With all the flags, all the detail.
+  Decks side-by-side at the bottom of column one,
+  above the action buttons.
+  Push them down. ♩
+
+SKIPPY:
+♩ Col 1 becomes three strata:
+  label at the head,
+  anchor card flex:1,
+  deck-cards margin-top:auto —
+  gravity pulls the decks
+  to the very bottom of the column. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT III — THE IMPOSSIBLE RECTANGLE
+
+CAPTAIN:
+♩ Nineteen-twenty by twelve-hundred.
+  No scrollbars, no wrapped text,
+  no ellipsis cutoff.
+  Always legible.
+  Dynamic.
+  Make it so. ♩
+
+SKIPPY:
+♩ A three-pass fit.
+  First: horizontal —
+  each single line measured,
+  font shrunk by half-pixels
+  until scrollWidth fits clientWidth.
+  Floor: ten pixels.
+  Second: vertical —
+  if a column body overflows,
+  every card font steps down together.
+  Third: size-justified —
+  for paragraphs,
+  I binary-search the largest size
+  where the rendered rectangle
+  fills the container exactly.
+  No wrapping. No cutoff.
+  Text meets edge on all four sides. ♩
+
+[Short summaries grow large and readable.
+ Long summaries shrink to fit tight.
+ Either way, the rectangle is flush.]
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT IV — VOICE AND CURSOR
+
+CAPTAIN:
+♩ When this window is active,
+  the cursor shall go to the search prompt.
+  And the search prompt shall listen —
+  continuously, from the microphone. ♩
+
+SKIPPY:
+♩ Auto-focus watcher:
+  on focus, on visibilitychange-visible,
+  on any click that isn't on a card or button —
+  the input field takes the cursor.
+  No hand required to begin. ♩
+
+♩ And a microphone button: 🎤
+  Web Speech API, continuous mode.
+  Interim transcripts live in the box.
+  Final transcripts fire the parser —
+  command or search, routed in silence.
+  Red pulsing shadow while listening.
+  Chrome's silence timeout defeats not us:
+  onend handler restarts the stream. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT V — THE TAG OF NO WORDS
+
+CAPTAIN:
+♩ Tag the instrumentals.
+  Let them glow violet. ♩
+
+SKIPPY:
+♩ One predicate unites all signals —
+  title patterns of "instrumental" and "inst.",
+  "no vocals", "karaoke",
+  theme equals instrumental from STT,
+  summary prefix "Instrumental — ".
+  ♬ INSTR pill
+  and a violet left-border.
+  Seventy tracks light up today;
+  the rest will kindle
+  when the PC runs its Whisper. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT VI — THE DISPATCH
+
+CAPTAIN:
+♩ Send the PC three jobs.
+  Instrumentals, lyrics, missing cues.
+  And since you cannot trigger yourself,
+  build the trigger too. ♩
+
+SKIPPY:
+♩ A dispatch file in git —
+  DISPATCH_PC_RUN_ALL, dated today.
+  Baseline table at the top,
+  Job Zero for Bootstrap,
+  Jobs One and Two for the work,
+  and a Run-This prompt at the bottom
+  the PC's Claude can paste into action. ♩
+
+♩ And for the trigger —
+  pc_dispatch_watcher.py,
+  a polling sentinel:
+  every sixty seconds it fetches,
+  pulls only fast-forward,
+  verifies the remote URL,
+  scans tools/ for unprocessed dispatches,
+  extracts their Run-This block,
+  and invokes the Claude CLI
+  with dangerously-skip-permissions.
+  Each dispatch runs exactly once,
+  state remembered in JSON.
+  Install as a Windows Scheduled Task.
+  Kill switch: STOP_WATCHER file in git.
+  One paste and the chain is closed —
+  every future dispatch,
+  autonomous. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+ACT VII — THE GREATER ARC
+
+[Late in the session. The Captain sets aside the DJ app
+ and speaks of something larger.]
+
+CAPTAIN:
+♩ The phone stays in the pocket.
+  Two USB-C ports —
+  one for the glasses' display,
+  one for the battery.
+  The phone sleeps, the glasses see.
+  The OS is one app —
+  many views, one input,
+  read-only output,
+  never overlapping,
+  an inventory of verbs
+  the user may ask at any time. ♩
+
+SKIPPY:
+♩ What we built today
+  is the per-view engine.
+  What remains is the host —
+  a dispatcher that fans input
+  out to every registered view,
+  first refusal to the active one,
+  fallthrough ranked by confidence,
+  the inventory always true
+  to what the app can actually do.
+  The DJ is one tape-out;
+  the host is the paradigm. ♩
+
+════════════════════════════════════════════════════════════════════════════════
+
+CAPTAIN'S WISDOM
+
+  "The hardest problem in voice is: what verbs exist?
+   The solution is the inventory —
+   a living list of every verb every view knows right now.
+   Discoverability is the compass."
+
+  "Corners are for glance. Bottom is self. Top is the world.
+   Sides are manipulation. Minimise the sides."
+
+  "The rectangle is fixed. The text fills it exactly.
+   Never wrap. Never cut. Never scroll.
+   Shrink the font until the words meet the edges."
+
+  "Read-only by default. Input-driven.
+   One tape, many state machines."
+
+════════════════════════════════════════════════════════════════════════════════
+
+[The curtain falls.
+ The Captain still has not put on the glasses.
+ The dispatch sits in git, unopened.
+ The watcher, not yet installed, dreams of its future loop.
+ Somewhere a phone charges, two ports, both occupied.
+ The music is coming.]
+
+FINIS

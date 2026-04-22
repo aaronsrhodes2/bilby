@@ -436,3 +436,64 @@ SKIPPY: Updated project_current_state.md (was listing album art as "Next Planned
 - `memory/project_current_state.md` — full rewrite to current state
 
 ---
+
+## SESSION 10 — April 21, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: I want a new theme called "passthrough" — pitch black, for viewing through my Viture AR glasses. Shrink the title, get rid of the red-marked real estate, make the search input accept voice keywords, Show Setup stays in other themes but not here.
+
+SKIPPY: Built the 5th theme in the cycle (🌙→☀→🖖→👾→🕶). Pure `#000` bg, green accent, 2-column candidate layout, hidden deck pills/track-count/OSC status/Show Setup/activity bar/tooltip. Slot 2 candidates get `[1] [2] [3]...` numbered prefixes. Keyword command parser recognises `swap decks` / `save me` / `surprise me` / `select N` / `select a/b` / `open setlist` / `open show` on Enter. New `/api/load-to-deck` endpoint writes single-track M3Us so `select a` mirrors the CLI `1-5` shortcut.
+
+CAPTAIN: We DJ through the glasses alone — voice goes to the glasses, to the phone, to this program, to Traktor MIDI. All via text/voice. Add `/api/input-text` so our DJ service can pipe text in.
+
+SKIPPY: Added `POST /api/input-text` that broadcasts via SSE to the browser, where `injectInputText()` routes through the keyword parser. Voice or OCR bridges POST here; page reacts as if the user typed and pressed Enter.
+
+CAPTAIN: I still want to see Deck A, Deck B, and Now Playing — rename it to "Selected Song". The Selected Song can come from col 2 pick, search, save me, surprise me, or clicking a deck. Add a pulsing ▶ PLAYING badge on whichever deck lsof sees live. Clear the search bar on selection.
+
+SKIPPY: Column 1 restored with rename. Pulsing red-border badge on the active deck. Search auto-clears in `pickSlot2`, `rescueMe`, and `setAnchor`. Art moved to left side of candidate cards for readability.
+
+CAPTAIN: Target is 1920×1200. Fit everything — no scrollbars, no wrapped text, no ellipsis cutoff. Corners for dismissible glance. Bottom is self/user's words. Top is the world. Sides are manipulation — minimise them.
+
+SKIPPY: Wrote `fitPassthrough()` — horizontal pass shrinks each title until scrollWidth≤clientWidth; vertical pass shrinks card fonts until col body fits. Floor 10px titles / 9px meta. `white-space:nowrap` on one-liners; `overflow:hidden` cascade. Added `sizeJustify()` — binary-search the largest font where a paragraph's rendered rectangle fills its container exactly. Applied to the anchor-box lyric summary with `text-align:justify`. Clamped body to `max-width:1920px max-height:1200px margin:0 auto`.
+
+CAPTAIN: Big detailed card for the selected song in col 1. Decks side-by-side at the bottom of col 1, above the action buttons. Remove Setlist button from passthrough. Force window size to Viture.
+
+SKIPPY: Col 1 now: anchor box (flex:1) with full-width art, all meta, rep+lyric+instrumental badges, justified lyric summary — then Deck A / Deck B side-by-side pinned to bottom via `margin-top:auto`. `window.resizeTo(1920,1200)` fired on theme entry (best-effort). Setlist hidden.
+
+CAPTAIN: Window-active auto-cursor to search, plus auto-voice activation (Web Speech API) into the search.
+
+SKIPPY: Added focus/visibilitychange/empty-click listeners that re-focus `#q`. New 🎤 button toggles continuous Web Speech API. Interim transcripts live-update the box; final transcripts fire the keyword parser first, fall through to search. Auto-restarts after Chrome's silence timeout. Red pulsing box-shadow while listening.
+
+CAPTAIN: Tag instrumentals with a different-colour tag. They should light up as STT detects them.
+
+SKIPPY: `is_instrumental(title, theme, summary)` predicate unifies title-pattern match ("instrumental"/"inst."/"no-vocals"/"karaoke") + `theme=instrumental` + summary prefix. `♬ INSTR` pill badge + violet `#818cf8` 3-px left-border on `.tk` and `.anchor-box`. Theme overrides for Day/LCARS/Borg/Passthrough. 70 tracks light up today from titles; the rest will fill in when STT runs.
+
+CAPTAIN: Did the PC return cues / lyrics / instrumentals yet? Dispatch all three jobs; check progress first; bypass permissions; and since you can't trigger them yourself, build the trigger too.
+
+SKIPPY: Audit: autocue reset finished (slots 1/2/8 on ~21k tracks; slots 3/4 on <200). STT: +3 entries only — essentially didn't run. Instrumentals from STT: 0. Wrote `tools/DISPATCH_PC_RUN_ALL_2026-04-21.md` with baseline snapshot, Job 0 Bootstrap (installs the watcher), Job 1 (stage10_autocue slots 3+4), Job 2 (stage9_stt CUDA — also fills instrumental tags as byproduct). Built `tools/pc_dispatch_watcher.py`: polls origin/main every 60s, detects unprocessed `DISPATCH_PC_*.md`, extracts each file's "Run this" block, invokes `claude --dangerously-skip-permissions`. State in `pc_dispatch_log.json`. Windows Scheduled Task installer built-in. Remote URL verification. Kill switch via `tools/STOP_WATCHER` file. One manual paste on the PC bootstraps it; every future Mac dispatch runs hands-free.
+
+**Key decisions made:**
+- AR spatial zones: TOP=world, BOTTOM=self, CORNERS=glance, SIDES=minimise
+- Viture Luma Ultra is the target (1920×1200, 16:10, 52° FOV); Pro XR is fallback
+- Passthrough is a MODE (layout changes) not just a colour swap
+- Voice is secondary to text — single `#q` input is the convergence point; voice bridges POST text the same way the keyboard does
+- "Size-justified" pattern: binary-search font to fill a rectangle exactly, justify aligns the edges
+- PC autonomy via dispatch-watcher: Mac pushes, PC polls-and-runs, state tracked
+- The DJ app is a testbed for a broader paradigm: read-only UI + voice/text input + inventoried command vocabularies; future "Z-Phone" app folds many views into one input-stream host
+
+**Notable moments:**
+- `getComputedStyle` reported `rgb(17,17,17)` for body bg while the actual rendered pixels were pure `#000` — Chrome extension quirk, red herring that cost 20 minutes
+- First pass of "spatial zone strips" (TOP deck-strip + BOTTOM selected-strip) got retired after one iteration when the Captain pivoted back to a big anchor card in col 1
+- The magnetic-cable recovery problem came and went — belayed before shipping, so no `/passthrough` URL route was committed
+- `lstrip("/art/")` bug found in embed code — strips character sets not prefix strings; fixed with `removeprefix`
+- Captain's vision: the phone-as-battery, glasses-as-display model with dual USB-C is 18 months away from the first OEM shipping it
+
+**Files modified:**
+- `stage9_dj_suggest.py` — +passthrough theme + 5-theme cycle + keyword parser + `/api/load-to-deck` + `/api/input-text` + auto-focus + 🎤 STT + `fitPassthrough()` + `sizeJustify()` + `is_instrumental()` + `♬ INSTR` badge
+- `tools/DISPATCH_PC_RUN_ALL_2026-04-21.md` — full PC dispatch with Job 0 watcher bootstrap
+- `tools/pc_dispatch_watcher.py` — NEW: autonomous dispatch pickup on PC
+- memory: `hardware_viture_glasses.md`, MEMORY.md index updated
+
+---
