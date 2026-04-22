@@ -1147,6 +1147,12 @@ class OSCState:
             if b: self._push({"type": "loaded", "deck": "a",
                                "title": b["title"], "artist": b["artist"]})
 
+    def broadcast_input(self, text: str) -> None:
+        """Inject text into every browser's search box via SSE.
+        Used by external DJ services (OCR, voice-to-text, remote control)."""
+        with self._lock:
+            self._push({"type": "input_text", "text": text})
+
     def add_client(self, q):
         with self._lock: self._sse_qs.append(q)
 
@@ -1683,6 +1689,21 @@ async function loadSelectedToDeck(letter){
     else{toast('Load failed');}
   }catch(e){toast('Load failed');}
 }
+// ── External text injection — DJ service, OCR, voice-to-text → /api/input-text
+function injectInputText(text){
+  text=(text||'').trim();
+  if(!text)return;
+  const qEl=document.getElementById('q');
+  if(tryKeywordCommand(text)){
+    qEl.value='';
+    document.getElementById('results').style.display='none';
+    toast(`⌨ ${text}`);
+  }else{
+    qEl.value=text;
+    qEl.dispatchEvent(new Event('input',{bubbles:true}));
+    qEl.focus();
+  }
+}
 
 // ── Show Genre Config ─────────────────────────────────────────────────────────
 const ALL_GENRES=[
@@ -2062,6 +2083,7 @@ function connectSSE(){
       return;
     }
     if(d.type==='play_state'){deckPlayState(d.deck,d.playing);return}
+    if(d.type==='input_text'){injectInputText(d.text);return}
     if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist,d.type==='playing');
   };
   es.onerror=()=>{
@@ -2366,6 +2388,28 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
     def swap_decks():
         osc_state.swap_decks()
         return jsonify({"ok": True})
+
+    @app.route("/api/input-text", methods=["POST"])
+    def input_text():
+        """Inject text into the browser search box as if typed + Enter pressed.
+        Broadcasts via SSE to every connected browser. If the text matches a
+        keyword command (e.g. 'swap decks', 'select 3'), it fires that command;
+        otherwise it drops into the search box and triggers a live search.
+
+        Used by external DJ services — OCR, voice-to-text, remote control.
+        The end goal is full solo-glasses DJing: you talk, the glasses or a
+        bridge app transcribes, that POSTs here, the browser reacts.
+
+        curl -X POST http://localhost:7334/api/input-text \\
+             -H 'Content-Type: application/json' \\
+             -d '{"text":"swap decks"}'
+        """
+        data = request.get_json(silent=True) or {}
+        text = (data.get("text") or request.args.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "missing text"}), 400
+        osc_state.broadcast_input(text)
+        return jsonify({"ok": True, "text": text})
 
     @app.route("/api/load-to-deck", methods=["POST"])
     def load_to_deck():
