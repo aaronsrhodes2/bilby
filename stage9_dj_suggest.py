@@ -1605,7 +1605,8 @@ body.passthrough .anchor-box .deck-tag{font-size:9px;letter-spacing:2px;margin-b
 body.passthrough .anchor-box .anc-art{float:none;width:100%;height:auto;max-height:40%;object-fit:contain;margin:0 0 8px 0;align-self:center}
 body.passthrough .anchor-box .an{font-size:15px;margin-bottom:6px;flex-shrink:0}
 body.passthrough .anchor-box .meta{font-size:12px;flex-wrap:wrap;margin-top:4px;flex-shrink:0}
-body.passthrough .anchor-box .lyric-summary{font-size:11px;color:#88FF88;margin-top:6px;line-height:1.3;flex-shrink:1;overflow:hidden;white-space:normal}
+body.passthrough .anchor-box .lyric-summary{color:#88FF88;margin-top:6px;line-height:1.35;flex:1;min-height:0;overflow:hidden;white-space:normal;text-align:justify;text-justify:inter-word}
+.size-justified{text-align:justify;text-justify:inter-word}
 body.passthrough .anchor-box .rep-convicted,
 body.passthrough .anchor-box .rep-accused,
 body.passthrough .anchor-box .rep-settled,
@@ -2345,6 +2346,33 @@ function renderSlot2(selIdx){
 // ── Dynamic auto-fit (passthrough only): shrink font-size per line until
 // the text fits without wrapping or being cut off. Also shrinks cards if
 // the vertical total exceeds the column body. Legibility floor = 9px.
+// ── Size-justified text fit ──────────────────────────────────────────────
+// Binary-search the largest font-size where the text's rendered rectangle
+// fits its container with no overflow. Text fills the box end-to-end via
+// text-align:justify for horizontal edges. Used for longer (sentence→paragraph)
+// text blocks where we want them to fill their allotted rectangle exactly.
+function sizeJustify(el, min=8, max=36, tol=0.25){
+  if(!el||!el.textContent.trim())return;
+  // Measure parent context — we want el's content to fit within its current box
+  // Reset so we can measure
+  el.style.fontSize='';
+  const ch=el.clientHeight;
+  const cw=el.clientWidth;
+  if(ch<8||cw<8)return;  // no space, bail
+  // Try max first — if it fits, we're done
+  el.style.fontSize=max+'px';
+  if(el.scrollHeight<=ch+1 && el.scrollWidth<=cw+1)return;
+  // Binary search downward
+  let lo=min, hi=max, best=min;
+  for(let i=0;i<14 && hi-lo>tol;i++){
+    const mid=(lo+hi)/2;
+    el.style.fontSize=mid+'px';
+    if(el.scrollHeight<=ch+1 && el.scrollWidth<=cw+1){best=mid;lo=mid;}
+    else{hi=mid;}
+  }
+  el.style.fontSize=best+'px';
+}
+
 function fitPassthrough(){
   if(!document.body.classList.contains('passthrough'))return;
   requestAnimationFrame(()=>{
@@ -2353,7 +2381,7 @@ function fitPassthrough(){
       'body.passthrough .tn, '+
       'body.passthrough .dc-name, '+
       'body.passthrough .anchor-box .an, '+
-      'body.passthrough .lyric-summary, '+
+      'body.passthrough .tk .lyric-summary, '+
       'body.passthrough #deck-strip .ds-cell, '+
       'body.passthrough #selected-strip .ss-row'
     );
@@ -2389,6 +2417,12 @@ function fitPassthrough(){
         if(!stepped)break;
       }
     });
+    // 3) Size-justified — fill allotted rectangle end-to-end. Runs LAST so
+    //    the container has settled from earlier passes.
+    document.querySelectorAll(
+      'body.passthrough .anchor-box .lyric-summary, '+
+      'body.passthrough .size-justified'
+    ).forEach(el=>sizeJustify(el,10,28));
   });
 }
 // Refit on window resize
