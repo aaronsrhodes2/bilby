@@ -64,6 +64,13 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Force UTF-8 stdout/stderr so track names with non-ASCII chars don't crash on
+# Windows terminals running cp1252 (the default Windows console code page).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE       = Path(__file__).parent.parent
 NML_CORR   = BASE / "corrected_traktor" / "collection.nml"
