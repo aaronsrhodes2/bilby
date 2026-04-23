@@ -16,15 +16,18 @@ Traktor Preferences → Controller Manager → Add → Generic OSC
   Out-Port:      9000
   Out-IP:        127.0.0.1
 
-Add six OUT mappings (Type: Output, each one):
+Add eight OUT mappings (Type: Output, each one):
 
-  Control: Track > Title     Deck: Deck A   OSC Address: /deck/a/title
-  Control: Track > Artist    Deck: Deck A   OSC Address: /deck/a/artist
-  Control: Deck > Play       Deck: Deck A   OSC Address: /deck/a/play
-  Control: Track > Title     Deck: Deck B   OSC Address: /deck/b/title
-  Control: Track > Artist    Deck: Deck B   OSC Address: /deck/b/artist
-  Control: Deck > Play       Deck: Deck B   OSC Address: /deck/b/play
+  Control: Track > Title        Deck: Deck A   OSC Address: /deck/a/title
+  Control: Track > Artist       Deck: Deck A   OSC Address: /deck/a/artist
+  Control: Deck > Play          Deck: Deck A   OSC Address: /deck/a/play
+  Control: Track > Elapsed Time Deck: Deck A   OSC Address: /deck/a/elapsed_time
+  Control: Track > Title        Deck: Deck B   OSC Address: /deck/b/title
+  Control: Track > Artist       Deck: Deck B   OSC Address: /deck/b/artist
+  Control: Deck > Play          Deck: Deck B   OSC Address: /deck/b/play
+  Control: Track > Elapsed Time Deck: Deck B   OSC Address: /deck/b/elapsed_time
 
+The elapsed_time mappings enable karaoke lyrics sync (position in seconds).
 Save and close Preferences. Traktor will now broadcast track info here.
 ─────────────────────────────────────────────────────────────────────────────
 """
@@ -84,44 +87,51 @@ def is_instrumental(title: str, lyric_theme: str | None, lyric_summary: str | No
 
 @dataclass
 class Track:
-    path:     str
-    artist:   str
-    title:    str
-    bpm:      float
-    key:      str
-    genre:    str
-    stars:    int
-    duration: float = 0.0   # seconds, from NML PLAYTIME
-    comment:  str   = ""    # NML INFO COMMENT — lyric summary written by write_nml_comments.py
-    art_url:  str   = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
+    path:        str
+    artist:      str
+    title:       str
+    bpm:         float
+    key:         str
+    genre:       str
+    stars:       int
+    duration:    float      = 0.0   # seconds, from NML PLAYTIME
+    comment:     str        = ""    # NML INFO COMMENT — lyric summary (write_nml_comments.py)
+    lyric_theme: str        = ""    # NML INFO COMMENT2 — first pipe segment (theme)
+    lyric_flags: list       = field(default_factory=list)  # COMMENT2 — ⚑-prefixed flag tokens
+    lyrics_full: str        = ""    # NML INFO KEY_LYRICS — full lyrics text (write_nml_lyrics.py)
+    art_url:     str        = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
 
     @property
     def search_text(self) -> str:
         return f"{self.artist} {self.title}".lower()
 
     def to_dict(self, score: float = 0.0, transition: str = "") -> dict:
-        rep  = reputation_for(self.artist)
-        lyr  = lyrics_for(self.path)
+        rep   = reputation_for(self.artist)
         sflag = song_flag_for(self.artist, self.title)
-        lyric_summary = lyr["summary"] if lyr else (self.comment or None)
-        lyric_theme   = lyr["theme"]   if lyr else None
+        # Metadata now sourced directly from NML fields via load_tracks():
+        #   COMMENT      → lyric_summary (one-sentence summary)
+        #   COMMENT2     → lyric_theme + lyric_flags (theme | ⚑flag tokens)
+        #   KEY_LYRICS   → lyrics_full (full text, for karaoke display)
+        lyric_summary = self.comment     or None
+        lyric_theme   = self.lyric_theme or None
         return {
-            "path":         self.path,
-            "artist":       self.artist,
-            "title":        self.title,
-            "bpm":          round(self.bpm, 1),
-            "key":          self.key,
-            "genre":        self.genre,
-            "stars":        self.stars,
-            "score":        round(score * 100),
-            "transition":   transition,
-            "rep_tier":     rep["tier"]     if rep else None,
-            "rep_summary":  rep["summary"]  if rep else None,
-            "song_flag":    sflag,
-            "lyric_summary":lyric_summary,
-            "lyric_theme":  lyric_theme,
-            "lyric_flags":  lyr["flags"]    if lyr else [],
-            "art_url":      self.art_url or "",
+            "path":          self.path,
+            "artist":        self.artist,
+            "title":         self.title,
+            "bpm":           round(self.bpm, 1),
+            "key":           self.key,
+            "genre":         self.genre,
+            "stars":         self.stars,
+            "score":         round(score * 100),
+            "transition":    transition,
+            "rep_tier":      rep["tier"]    if rep else None,
+            "rep_summary":   rep["summary"] if rep else None,
+            "song_flag":     sflag,
+            "lyric_summary": lyric_summary,
+            "lyric_theme":   lyric_theme,
+            "lyric_flags":   self.lyric_flags,
+            "lyrics_full":   self.lyrics_full or None,
+            "art_url":       self.art_url or "",
             "is_instrumental": is_instrumental(self.title, lyric_theme, lyric_summary),
         }
 
@@ -173,25 +183,20 @@ def song_flag_for(artist: str, title: str) -> str | None:
     return SONG_FLAGS.get(f"{artist.lower().strip()}\t{title.lower().strip()}")
 
 
-# ── Lyrics index ──────────────────────────────────────────────────────────────
+# ── Lyrics index (DEPRECATED — metadata now sourced from NML fields) ──────────
+# Track.comment     ← NML INFO COMMENT   (written by write_nml_comments.py)
+# Track.lyric_theme ← NML INFO COMMENT2  (theme segment)
+# Track.lyric_flags ← NML INFO COMMENT2  (⚑-flag segments)
+# Track.lyrics_full ← NML INFO KEY_LYRICS (written by write_nml_lyrics.py)
+#
+# lyrics_index.json is no longer loaded at startup. lyrics_for() is retained
+# as dead code for one session; remove it next time this file is edited.
 
-def load_lyrics_index(path: Path) -> dict[str, dict]:
-    """Load lyrics summary+flags cache. Returns {} if not yet built."""
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text())
-    except Exception:
-        return {}
-
-LYRICS: dict[str, dict] = load_lyrics_index(LYRICS_INDEX)
+LYRICS: dict[str, dict] = {}   # formerly: load_lyrics_index(LYRICS_INDEX)
 
 def lyrics_for(path: str) -> dict | None:
-    """Return {summary, flags} for a track path, or None."""
-    entry = LYRICS.get(path)
-    if not entry or not entry.get("summary"):
-        return None
-    return entry
+    """DEPRECATED — always returns None now that LYRICS is empty."""
+    return None
 
 
 # ── Album art index ───────────────────────────────────────────────────────────
@@ -248,17 +253,41 @@ def load_tracks(nml_path: Path) -> list[Track]:
             duration = 0.0
         dk      = f"{artist.lower().strip()}\t{title.lower().strip()}"
         art_url = ART_INDEX.get(dk) or ""
+
+        # ── Parse COMMENT2 → theme + lyric_flags ──────────────────────────────
+        # Format written by write_nml_comments.py:
+        #   theme | ⚑flag1 ⚑flag2 | ⚑rep:tier (name) | ⚑song:reason
+        comment2    = info.get("COMMENT2", "") or ""
+        lyric_theme = ""
+        lyric_flags: list[str] = []
+        if comment2:
+            c2parts = [p.strip() for p in comment2.split(" | ")]
+            start = 0
+            if c2parts and not c2parts[0].startswith("⚑"):
+                lyric_theme = c2parts[0]
+                start = 1
+            for part in c2parts[start:]:
+                if part.startswith("⚑rep:") or part.startswith("⚑song:"):
+                    continue
+                # Lyric flags segment: "⚑extreme_violence ⚑sexual_content"
+                for tok in part.split():
+                    if tok.startswith("⚑"):
+                        lyric_flags.append(tok[1:])
+
         raw.append((bitrate, Track(
-            path     = path,
-            artist   = artist,
-            title    = title,
-            bpm      = bpm,
-            key      = info.get("KEY",   ""),
-            genre    = info.get("GENRE", ""),
-            stars    = RANKING_TO_STARS.get(ranking, 0),
-            duration = duration,
-            comment  = info.get("COMMENT", "") or "",
-            art_url  = art_url,
+            path        = path,
+            artist      = artist,
+            title       = title,
+            bpm         = bpm,
+            key         = info.get("KEY",   ""),
+            genre       = info.get("GENRE", ""),
+            stars       = RANKING_TO_STARS.get(ranking, 0),
+            duration    = duration,
+            comment     = info.get("COMMENT",   "") or "",
+            lyric_theme = lyric_theme,
+            lyric_flags = lyric_flags,
+            lyrics_full = info.get("KEY_LYRICS", "") or "",
+            art_url     = art_url,
         )))
 
     # Deduplicate by artist+title: keep highest-bitrate version.
@@ -1095,20 +1124,42 @@ class OSCState:
         self._pending = {}        # deck → {title, artist}  (accumulates until both arrive)
         self._loaded  = {}        # deck → {title, artist}  (last fully-loaded track)
         self._playing = {}        # deck → bool
+        self._elapsed = {}        # deck → float seconds (playback position)
         self._sse_qs  = []        # SSE client queues
 
-    def _push(self, event: dict) -> None:
-        """Send an event to all connected SSE clients (must hold lock)."""
+    def _push(self, event: dict, suip: bool = True) -> None:
+        """Send an event to all connected SSE clients (must hold lock).
+
+        suip=False suppresses SUIP hook firing — use for high-frequency events
+        like position ticks that don't change the scene tree.
+        """
         for q in list(self._sse_qs):
             try: q.put_nowait(event)
             except: pass
-        # Fire SUIP hooks on any push — client-side coalescer caps at 10/sec.
-        for h in list(_SUIP_HOOKS):
-            try: h()
-            except Exception: pass
+        if suip:
+            # Fire SUIP hooks — client-side coalescer caps at 10/sec.
+            for h in list(_SUIP_HOOKS):
+                try: h()
+                except Exception: pass
+
+    def get_elapsed(self, deck: str) -> float:
+        """Return playback position in seconds for a deck (0.0 if unknown)."""
+        with self._lock:
+            return self._elapsed.get(deck, 0.0)
 
     def on_message(self, deck: str, field: str, value: str):
         with self._lock:
+            # ── Playback position (high-frequency — no SUIP trigger) ──────────
+            if field == "elapsed_time":
+                try:
+                    self._elapsed[deck] = float(value)
+                except (ValueError, TypeError):
+                    pass
+                self._push({"type": "position", "deck": deck,
+                            "elapsed": self._elapsed.get(deck, 0.0)},
+                           suip=False)
+                return
+
             # ── Play-state change ─────────────────────────────────────────────
             if field == "play":
                 playing = (str(value).strip() in ("1", "1.0", "True", "true"))
