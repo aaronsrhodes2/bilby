@@ -559,7 +559,7 @@ def load_progress() -> tuple[set[str], set[str]]:
     """Return (done, stalled) path sets from the state file."""
     if STATE_FILE.exists():
         try:
-            data = json.loads(STATE_FILE.read_text())
+            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
             return set(data.get("done", [])), set(data.get("stalled", []))
         except Exception:
             pass
@@ -570,7 +570,8 @@ def save_progress(done: set[str], stalled: set[str]) -> None:
     STATE_FILE.parent.mkdir(exist_ok=True)
     STATE_FILE.write_text(
         json.dumps({"done": sorted(done), "stalled": sorted(stalled)},
-                   ensure_ascii=False)
+                   ensure_ascii=False),
+        encoding="utf-8"
     )
 
 
