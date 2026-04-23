@@ -581,10 +581,10 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
 
     Returns (candidates, written, skipped_no_data).
     """
-    print(f"\n{'─'*60}")
+    print(f"\n{'-'*60}")
     print(f"  NML:  {nml_path}")
     print(f"  Mode: {mode}  |  Apply: {apply}  |  Limit: {limit or 'all'}")
-    print(f"{'─'*60}")
+    print(f"{'-'*60}")
 
     tree    = ET.parse(nml_path)
     root    = tree.getroot()
@@ -876,7 +876,7 @@ def main():
 
     # Report mode
     if args.report:
-        print("\n═══ Auto Cue Point Report ═══")
+        print("\n=== Auto Cue Point Report ===")
         for p in nml_paths:
             report(p)
         print()
@@ -931,14 +931,14 @@ def main():
         if worker:
             worker.close()
 
-    print(f"\n{'═'*60}")
+    print(f"\n{'='*60}")
     print(f"  Candidates:            {total_candidates:,}")
     print(f"  Written/queued:        {total_written:,}")
     print(f"  Skipped (no BPM/data): {total_skipped:,}")
     print(f"  Stalled (timeout):     {len(stalled):,}")
     if apply:
         print(f"  Progress saved:        {len(done):,} tracks total")
-    print(f"{'═'*60}\n")
+    print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":
