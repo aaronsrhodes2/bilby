@@ -648,7 +648,18 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
             first_beat_ms, bpm = parse_grid(entry)
             duration            = get_duration(entry)
             if audio_root:
-                rel        = Path(path).relative_to("/") if Path(path).is_absolute() else Path(path)
+                # Strip Mac-side path prefix up to the anchor component so that
+                # D:/Aaron/Music/VERAS SONGS + corrected_music/Artist/Album/file
+                # resolves correctly from NML paths like
+                # /Users/.../corrected_music/Artist/Album/file
+                p_parts = Path(path).parts
+                anchor  = "corrected_music"
+                try:
+                    idx = next(i for i, p in enumerate(p_parts)
+                               if p.lower() == anchor.lower())
+                    rel = Path(*p_parts[idx + 1:])
+                except StopIteration:
+                    rel = Path(path).relative_to("/") if Path(path).is_absolute() else Path(path)
                 audio_path = str(audio_root / rel)
             else:
                 audio_path = path
