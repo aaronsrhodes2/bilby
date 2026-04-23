@@ -522,14 +522,14 @@ class TimeoutWorker:
         Returns cue data dict or None on stall/crash.
         """
         if not self._proc.is_alive():
-            print("  [worker] dead worker — restarting", flush=True)
+            print("  [worker] dead worker - restarting", flush=True)
             self._start()
 
         self._in_q.put((audio_path, first_beat_ms, bpm, duration))
         try:
             return self._out_q.get(timeout=self.timeout)
         except _queue.Empty:
-            print(f"  [worker] stall after {self.timeout}s — killing and restarting", flush=True)
+            print(f"  [worker] stall after {self.timeout}s - killing and restarting", flush=True)
             self._proc.kill()
             self._proc.join(5)
             self._start()
@@ -675,7 +675,7 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
 
         if stalled_track:
             stalled.add(path)
-            print(f"  ✗ stall  {artist} — {title}", flush=True)
+            print(f"  [stall]  {artist} - {title}", flush=True)
             if apply:
                 save_progress(done, stalled)
             continue
@@ -691,7 +691,7 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
         if not new_cues:
             skipped_nd += 1
             if verbose:
-                print(f"  ✗ no data  {artist} — {title}")
+                print(f"  [skip]   {artist} - {title}")
             continue
 
         # Apply — write CUE_V2 elements into the entry
@@ -747,13 +747,13 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
                         SLOT_VOCAL: "3", SLOT_DROP: "4", SLOT_OUTRO: "8(F)"}
         placed_str   = "+".join(slot_labels[s] for s in slots_placed)
         if apply:
-            print(f"  ✓ [{placed_str}]  {artist} — {title}", flush=True)
+            print(f"  [ok] [{placed_str}]  {artist} - {title}", flush=True)
         else:
             c2 = new_cues.get(SLOT_FIRST_BEAT)
             c8 = new_cues.get(SLOT_OUTRO)
-            c2ms = f"{float(c2.get('START')):.0f}ms" if c2 is not None else "—"
-            c8ms = f"{float(c8.get('START')):.0f}ms" if c8 is not None else "—"
-            print(f"  DRY [{placed_str}]  {artist} — {title}  |  C2={c2ms} C8={c8ms}")
+            c2ms = f"{float(c2.get('START')):.0f}ms" if c2 is not None else "-"
+            c8ms = f"{float(c8.get('START')):.0f}ms" if c8 is not None else "-"
+            print(f"  DRY [{placed_str}]  {artist} - {title}  |  C2={c2ms} C8={c8ms}")
 
         written += 1
 
@@ -763,7 +763,7 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
             remaining = (candidates - written) / rate if rate > 0 else 0
             eta_h    = int(remaining // 3600)
             eta_m    = int((remaining % 3600) // 60)
-            print(f"  … {written:,} done | {candidates - written:,} remaining "
+            print(f"  ... {written:,} done | {candidates - written:,} remaining "
                   f"| {rate:.1f} t/s | ETA ~{eta_h}h{eta_m:02d}m", flush=True)
             if apply:
                 save_progress(done, stalled)
@@ -771,7 +771,7 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
     if apply and modified:
         backup = nml_path.with_suffix(".nml.autocue_bak")
         shutil.copy2(nml_path, backup)
-        print(f"\n  Backup → {backup.name}")
+        print(f"\n  Backup -> {backup.name}")
 
         tree.write(str(nml_path), encoding="utf-8", xml_declaration=False)
         content = nml_path.read_text(encoding="utf-8")
@@ -779,7 +779,7 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
             '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + content,
             encoding="utf-8"
         )
-        print(f"  Saved  → {nml_path}")
+        print(f"  Saved  -> {nml_path}")
         save_progress(done, stalled)
 
     return candidates, written, skipped_nd
@@ -829,8 +829,8 @@ def report(nml_path: Path) -> None:
     print(f"  Cue 3 (vocal) already set:      {slot_counts[SLOT_VOCAL]:>7,}")
     print(f"  Cue 4 (drop loop) already set:  {slot_counts[SLOT_DROP]:>7,}")
     print(f"  Cue 8 (fade-out) already set:   {slot_counts[SLOT_OUTRO]:>7,}")
-    print(f"  Progress — done:                {len(done):>7,}")
-    print(f"  Progress — stalled:             {len(stalled):>7,}")
+    print(f"  Progress - done:                {len(done):>7,}")
+    print(f"  Progress - stalled:             {len(stalled):>7,}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -914,7 +914,7 @@ def main():
     apply      = args.apply and not args.dry_run
 
     if not apply:
-        print("\n  *** DRY RUN — no files will be modified ***")
+        print("\n  *** DRY RUN - no files will be modified ***")
         print("  Pass --apply to write changes.\n")
 
     total_candidates = total_written = total_skipped = 0
