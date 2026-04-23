@@ -55,6 +55,8 @@ Windows path note: if running on PC, pass --audio-root to override default.
 
 import argparse
 import json
+import multiprocessing
+import queue as _queue
 import re
 import shutil
 import sys
@@ -110,6 +112,34 @@ DROP_ENERGY_PERCENTILE = 75
 
 # How many consecutive "loud" beats before we call it the drop
 DROP_SUSTAIN_BEATS = 4
+
+
+# ── Platform utilities ─────────────────────────────────────────────────────────
+
+def keep_awake() -> None:
+    """Prevent Windows from sleeping while the process runs."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ES_CONTINUOUS      = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+    except Exception:
+        pass
+
+
+def set_low_priority() -> None:
+    """Run at below-normal priority so the machine stays usable."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        BELOW_NORMAL = 0x00004000
+        handle = ctypes.windll.kernel32.GetCurrentProcess()
+        ctypes.windll.kernel32.SetPriorityClass(handle, BELOW_NORMAL)
+    except Exception:
+        pass
 
 
 # ── NML helpers ───────────────────────────────────────────────────────────────
@@ -259,25 +289,30 @@ def compute_fast_cues(entry) -> dict[int, ET.Element] | None:
 
 
 # ── Audio analysis cue computation ────────────────────────────────────────────
+#
+# _compute_cue_data() is the subprocess-safe core: returns plain dicts (picklable).
+# compute_audio_cues() wraps it for callers that need ET.Elements directly.
 
-def compute_audio_cues(audio_path: str, first_beat_ms: float | None,
-                       bpm: float | None, duration: float | None) -> dict[int, ET.Element]:
+def _compute_cue_data(audio_path: str,
+                      first_beat_ms: float | None,
+                      bpm: float | None,
+                      duration: float | None) -> dict[int, dict]:
     """
-    Use librosa to compute all four cue points from audio.
-    Returns whatever slots could be computed (may be partial).
+    Compute cue point data from audio.  Returns picklable dict:
+      {slot: {"start": ms, "len": ms, "type": int, "name": str, "color": str|None}}
+
+    This function runs in a subprocess (via TimeoutWorker) so it must not
+    return any non-picklable objects.
     """
     try:
         import librosa
         import numpy as np
     except ImportError:
-        print("  [audio] librosa not installed — pip install librosa soundfile")
         return {}
 
-    # Load audio at 22050 Hz mono
     try:
         y, sr = librosa.load(audio_path, sr=22050, mono=True)
     except Exception as e:
-        print(f"  [audio] load failed: {e}")
         return {}
 
     dur_sec = len(y) / sr
@@ -286,10 +321,8 @@ def compute_audio_cues(audio_path: str, first_beat_ms: float | None,
 
     # ── Beat grid ────────────────────────────────────────────────────────────
     if bpm and bpm > 0:
-        # Use Traktor's authoritative BPM; don't re-detect
         beat_period_sec = 60.0 / bpm
     else:
-        # No Traktor BPM — fall back to librosa detection
         tempo_est, _ = librosa.beat.beat_track(y=y, sr=sr, units="time")
         if hasattr(tempo_est, '__len__'):
             tempo_est = float(tempo_est[0]) if len(tempo_est) else 120.0
@@ -298,105 +331,84 @@ def compute_audio_cues(audio_path: str, first_beat_ms: float | None,
 
     beat_period_ms = beat_period_sec * 1000.0
 
-    # Generate beat grid from Traktor's first-beat anchor (or detect it)
     if first_beat_ms is not None:
         anchor_sec = first_beat_ms / 1000.0
     else:
-        # Use librosa to find the first beat onset
         onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-        times     = librosa.times_like(onset_env, sr=sr)
         onsets    = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr,
                                                units="time", backtrack=True)
         anchor_sec    = float(onsets[0]) if len(onsets) else 0.0
         first_beat_ms = anchor_sec * 1000.0
 
-    # Build beat grid (all beat positions in seconds)
-    n_beats = int(dur_sec / beat_period_sec) + 2
+    n_beats    = int(dur_sec / beat_period_sec) + 2
     beat_times = np.array([anchor_sec + i * beat_period_sec for i in range(n_beats)])
     beat_times = beat_times[(beat_times >= 0) & (beat_times < dur_sec)]
 
-    cues: dict[int, ET.Element] = {}
+    data: dict[int, dict] = {}
 
-    # ── Cue 1 — Load cue at FIRST SOUND (true audio onset) ──────────────────
-    # Detect the very first audio event — may be before or at the beat anchor.
-    # This is what the track plays from when loaded, so we want the first noise,
-    # not necessarily the first beat (which could follow a silent intro).
+    # ── Cue 1 — Load cue at FIRST SOUND ──────────────────────────────────────
     try:
-        import numpy as np
-        onset_env  = librosa.onset.onset_strength(y=y, sr=sr, hop_length=512)
+        onset_env   = librosa.onset.onset_strength(y=y, sr=sr, hop_length=512)
         onset_times = librosa.times_like(onset_env, sr=sr, hop_length=512)
-        # Use a low threshold to catch even soft openings
         onset_frames = librosa.onset.onset_detect(
             onset_envelope=onset_env, sr=sr, units="frames",
             pre_max=3, post_max=3, pre_avg=5, post_avg=5,
             delta=0.03, wait=10
         )
-        if len(onset_frames):
-            first_sound_ms = float(onset_times[onset_frames[0]]) * 1000.0
-        else:
-            first_sound_ms = first_beat_ms   # fallback: use beat anchor
+        first_sound_ms = (float(onset_times[onset_frames[0]]) * 1000.0
+                          if len(onset_frames) else first_beat_ms)
     except Exception:
         first_sound_ms = first_beat_ms
 
-    cues[SLOT_LOAD] = make_cue(SLOT_LOAD, first_sound_ms, "Load",
-                                type_=3, color="#FFFFFF")
+    data[SLOT_LOAD] = {"start": first_sound_ms, "len": 0.0,
+                       "type": 3, "name": "Load", "color": "#FFFFFF"}
 
-    # ── Cue 2 — first beat (grid-aligned, for BPM mixing) ────────────────────
-    cues[SLOT_FIRST_BEAT] = make_cue(SLOT_FIRST_BEAT, first_beat_ms, "Fade In", type_=1)
+    # ── Cue 2 — first beat (grid-aligned) ────────────────────────────────────
+    data[SLOT_FIRST_BEAT] = {"start": first_beat_ms, "len": 0.0,
+                             "type": 1, "name": "Fade In", "color": None}
 
-    # ── Cue 8 — 16 beats before end (fade-out marker) ────────────────────────
+    # ── Cue 8 — 16 beats before end ──────────────────────────────────────────
     end_ms        = dur_sec * 1000.0
     outro_ms      = end_ms - OUTRO_BEATS_FROM_END * beat_period_ms
     outro_snapped = snap_to_grid(outro_ms, first_beat_ms, beat_period_ms)
     if outro_snapped > first_beat_ms + beat_period_ms:
-        cues[SLOT_OUTRO] = make_cue(SLOT_OUTRO, outro_snapped, "Outro",
-                                    type_=2)   # TYPE=2 = fade-out
+        data[SLOT_OUTRO] = {"start": outro_snapped, "len": 0.0,
+                            "type": 2, "name": "Outro", "color": None}
 
-    # ── Cue 4 — main drop (highest-energy beat onset) ───────────────────────
+    # ── Cue 4 — main drop (highest-energy beat) ───────────────────────────────
     try:
-        import numpy as np
-        onset_env  = librosa.onset.onset_strength(y=y, sr=sr, hop_length=512)
+        onset_env   = librosa.onset.onset_strength(y=y, sr=sr, hop_length=512)
         onset_times = librosa.times_like(onset_env, sr=sr, hop_length=512)
 
-        # Map beat grid to onset envelope indices
-        beat_frames = np.searchsorted(onset_times, beat_times)
-        beat_frames = np.clip(beat_frames, 0, len(onset_env) - 1)
+        beat_frames  = np.searchsorted(onset_times, beat_times)
+        beat_frames  = np.clip(beat_frames, 0, len(onset_env) - 1)
 
-        # Restrict search: skip the first MIN_DROP_SEEK_SEC and last 30s
         search_start = int(MIN_DROP_SEEK_SEC / beat_period_sec)
         search_end   = max(search_start + 8,
                            len(beat_times) - int(30 / beat_period_sec))
         search_beats = beat_frames[search_start:search_end]
 
         if len(search_beats) >= DROP_SUSTAIN_BEATS:
-            # Compute rolling average onset strength over DROP_SUSTAIN_BEATS window
-            window = DROP_SUSTAIN_BEATS
+            window    = DROP_SUSTAIN_BEATS
             strengths = np.array([
                 onset_env[search_beats[i:i+window]].mean()
                 for i in range(len(search_beats) - window + 1)
             ])
-            # Find the first beat where rolling avg exceeds the DROP_ENERGY_PERCENTILE
             threshold  = np.percentile(onset_env[beat_frames], DROP_ENERGY_PERCENTILE)
             candidates = np.where(strengths >= threshold)[0]
             if len(candidates):
-                # Prefer the first sustained high-energy region (the drop)
                 drop_beat_idx = search_start + int(candidates[0])
                 drop_sec      = float(beat_times[drop_beat_idx])
                 drop_ms       = snap_to_4beat(drop_sec * 1000.0, first_beat_ms, beat_period_ms)
                 loop_len_ms   = DROP_LOOP_BEATS * beat_period_ms
-                cues[SLOT_DROP] = make_cue(SLOT_DROP, drop_ms, "Drop",
-                                           type_=5, len_ms=loop_len_ms)
-    except Exception as e:
-        pass   # drop detection is best-effort; don't crash the whole track
+                data[SLOT_DROP] = {"start": drop_ms, "len": loop_len_ms,
+                                   "type": 5, "name": "Drop", "color": None}
+    except Exception:
+        pass
 
-    # ── Cue 3 — first vocal / melodic onset ─────────────────────────────────
+    # ── Cue 3 — first vocal / melodic onset ──────────────────────────────────
     try:
-        import numpy as np
-        # Separate harmonic component (isolates pitched/tonal content from drums)
-        y_harm = librosa.effects.harmonic(y, margin=4)
-
-        # Bandpass to voice/lead range: 300–3500 Hz
-        # Use a short-time Fourier transform and zero out-of-band bins
+        y_harm   = librosa.effects.harmonic(y, margin=4)
         n_fft    = 2048
         hop      = 512
         freqs    = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
@@ -406,21 +418,17 @@ def compute_audio_cues(audio_path: str, first_beat_ms: float | None,
         D_band   = np.abs(D_harm)
         D_band[~band_mask, :] = 0
 
-        # RMS energy in voice band over time
         band_rms = np.sqrt((D_band ** 2).mean(axis=0))
         times    = librosa.times_like(band_rms, sr=sr, hop_length=hop, n_fft=n_fft)
 
-        # Baseline: median energy in the first 5s (typically intro/silence)
         intro_frames = int(5.0 * sr / hop)
         baseline     = np.median(band_rms[:intro_frames]) if intro_frames > 0 else 0
         threshold    = max(baseline * 3.0, np.percentile(band_rms, 40))
 
-        # Find first frame (after MIN_VOCAL_SEEK_SEC) where energy sustains above threshold
-        min_frame = int(MIN_VOCAL_SEEK_SEC * sr / hop)
-        # Require 10 consecutive frames above threshold (~0.1s) to filter transients
-        sustain   = 10
+        min_frame   = int(MIN_VOCAL_SEEK_SEC * sr / hop)
+        sustain     = 10
         vocal_frame = None
-        above = 0
+        above       = 0
         for i in range(min_frame, len(band_rms)):
             if band_rms[i] >= threshold:
                 above += 1
@@ -432,43 +440,144 @@ def compute_audio_cues(audio_path: str, first_beat_ms: float | None,
 
         if vocal_frame is not None:
             vocal_sec = float(times[vocal_frame])
-            # Only place Cue 3 if it's meaningfully after Cue 2 (at least 1 beat)
             if vocal_sec > anchor_sec + beat_period_sec:
-                vocal_ms       = vocal_sec * 1000.0
-                vocal_snapped  = snap_to_grid(vocal_ms, first_beat_ms, beat_period_ms)
-                cues[SLOT_VOCAL] = make_cue(SLOT_VOCAL, vocal_snapped, "Vocal")
-    except Exception as e:
-        pass   # vocal detection is best-effort
+                vocal_ms      = vocal_sec * 1000.0
+                vocal_snapped = snap_to_grid(vocal_ms, first_beat_ms, beat_period_ms)
+                data[SLOT_VOCAL] = {"start": vocal_snapped, "len": 0.0,
+                                    "type": 0, "name": "Vocal", "color": None}
+    except Exception:
+        pass
 
-    return cues
+    return data
+
+
+def _data_to_element(slot: int, d: dict) -> ET.Element:
+    return make_cue(slot, d["start"], d.get("name", "n.n."),
+                    type_=d.get("type", 0), len_ms=d.get("len", 0.0),
+                    color=d.get("color"))
+
+
+def compute_audio_cues(audio_path: str,
+                       first_beat_ms: float | None,
+                       bpm: float | None,
+                       duration: float | None) -> dict[int, ET.Element]:
+    """Compute audio cues and return ET.Elements (wrapper around _compute_cue_data)."""
+    data = _compute_cue_data(audio_path, first_beat_ms, bpm, duration)
+    return {slot: _data_to_element(slot, d) for slot, d in data.items()}
+
+
+# ── Subprocess worker with stall recovery ─────────────────────────────────────
+#
+# Audio analysis can hang on malformed files.  We run each track in a
+# persistent worker process and kill+restart it if it exceeds the timeout.
+
+def _persistent_worker(in_q: multiprocessing.Queue,
+                       out_q: multiprocessing.Queue) -> None:
+    """
+    Long-running worker process: read (audio_path, first_beat_ms, bpm, duration)
+    from in_q, write result dict (or None on error) to out_q.
+    Send None on in_q to shut down cleanly.
+    """
+    while True:
+        item = in_q.get()
+        if item is None:
+            break
+        audio_path, first_beat_ms, bpm, duration = item
+        try:
+            result = _compute_cue_data(audio_path, first_beat_ms, bpm, duration)
+        except Exception:
+            result = None
+        out_q.put(result)
+
+
+class TimeoutWorker:
+    """
+    Single reusable worker process for audio analysis.
+    Auto-restarts if the worker stalls (exceeds timeout).
+    """
+
+    def __init__(self, timeout: int = 120) -> None:
+        self.timeout = timeout
+        self._proc: multiprocessing.Process | None = None
+        self._in_q: multiprocessing.Queue | None = None
+        self._out_q: multiprocessing.Queue | None = None
+        self._start()
+
+    def _start(self) -> None:
+        self._in_q  = multiprocessing.Queue()
+        self._out_q = multiprocessing.Queue()
+        self._proc  = multiprocessing.Process(
+            target=_persistent_worker,
+            args=(self._in_q, self._out_q),
+            daemon=True,
+        )
+        self._proc.start()
+
+    def analyze(self, audio_path: str,
+                first_beat_ms: float | None,
+                bpm: float | None,
+                duration: float | None) -> dict | None:
+        """
+        Run audio analysis in the worker.
+        Returns cue data dict or None on stall/crash.
+        """
+        if not self._proc.is_alive():
+            print("  [worker] dead worker — restarting", flush=True)
+            self._start()
+
+        self._in_q.put((audio_path, first_beat_ms, bpm, duration))
+        try:
+            return self._out_q.get(timeout=self.timeout)
+        except _queue.Empty:
+            print(f"  [worker] stall after {self.timeout}s — killing and restarting", flush=True)
+            self._proc.kill()
+            self._proc.join(5)
+            self._start()
+            return None
+
+    def close(self) -> None:
+        if self._proc and self._proc.is_alive():
+            try:
+                self._in_q.put(None)
+                self._proc.join(5)
+            except Exception:
+                pass
+            if self._proc.is_alive():
+                self._proc.kill()
+
+
+# ── Progress tracking ─────────────────────────────────────────────────────────
+
+def load_progress() -> tuple[set[str], set[str]]:
+    """Return (done, stalled) path sets from the state file."""
+    if STATE_FILE.exists():
+        try:
+            data = json.loads(STATE_FILE.read_text())
+            return set(data.get("done", [])), set(data.get("stalled", []))
+        except Exception:
+            pass
+    return set(), set()
+
+
+def save_progress(done: set[str], stalled: set[str]) -> None:
+    STATE_FILE.parent.mkdir(exist_ok=True)
+    STATE_FILE.write_text(
+        json.dumps({"done": sorted(done), "stalled": sorted(stalled)},
+                   ensure_ascii=False)
+    )
 
 
 # ── NML processing ────────────────────────────────────────────────────────────
 
-def load_progress() -> set[str]:
-    """Load set of already-processed track paths from state file."""
-    if STATE_FILE.exists():
-        try:
-            data = json.loads(STATE_FILE.read_text())
-            return set(data.get("done", []))
-        except Exception:
-            pass
-    return set()
-
-
-def save_progress(done: set[str]) -> None:
-    STATE_FILE.parent.mkdir(exist_ok=True)
-    STATE_FILE.write_text(json.dumps({"done": sorted(done)}, ensure_ascii=False))
-
-
 def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
-                audio_root: Path | None, done: set[str],
+                audio_root: Path | None, done: set[str], stalled: set[str],
+                worker: "TimeoutWorker | None" = None,
                 verbose: bool = False) -> tuple[int, int, int]:
     """
     Process one NML file.
 
-    mode:  "fast"  — NML-only (cues 2 + 8)
-           "audio" — full audio analysis (cues 2 + 3 + 4 + 8)
+    mode:  "fast"  — NML-only (cues 1, 2, 8)
+           "audio" — full audio analysis (cues 1, 2, 3, 4, 8)
 
     Returns (candidates, written, skipped_no_data).
     """
@@ -482,16 +591,17 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
     coll    = root.find("COLLECTION")
     entries = coll.findall("ENTRY")
 
-    candidates  = 0
-    written     = 0
-    skipped_nd  = 0
-    modified    = False
+    candidates = 0
+    written    = 0
+    skipped_nd = 0
+    modified   = False
+
+    t_start = time.time()
 
     for entry in entries:
         artist = entry.get("ARTIST", "")
         title  = entry.get("TITLE",  "")
 
-        # Build audio path
         loc  = entry.find("LOCATION")
         if loc is None:
             continue
@@ -499,25 +609,32 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
             loc.get("VOLUME", ""), loc.get("DIR", ""), loc.get("FILE", "")
         )
 
-        # Skip if already processed in a previous run
-        if path in done:
+        # Skip already-processed tracks (done or stalled)
+        if path in done or path in stalled:
             continue
 
-        # Determine which of our three fast slots are missing for this track.
-        # We now fill each slot independently — a track with some user cues can
-        # still be missing Cue 1 (Load), 2 (First Beat), or 8 (Fade-out).
+        # Determine which slots are missing for this track
         existing_hotcues = {c.get("HOTCUE") for c in entry.findall("CUE_V2")}
-        # Check Load: HOTCUE=0 exists but may still be wrong TYPE
+
         load_el = next((c for c in entry.findall("CUE_V2")
                         if c.get("HOTCUE") == "0"), None)
         fb_el   = next((c for c in entry.findall("CUE_V2")
                         if c.get("HOTCUE") == str(SLOT_FIRST_BEAT)), None)
+
         need_load       = load_el is None or load_el.get("TYPE") != "3"
         need_first_beat = fb_el   is None or fb_el.get("TYPE")   != "1"
         need_outro      = str(SLOT_OUTRO) not in existing_hotcues
 
-        if not any([need_load, need_first_beat, need_outro]):
-            continue   # all three already set
+        # Vocal and drop are only set in audio mode
+        if mode == "audio":
+            need_vocal = str(SLOT_VOCAL) not in existing_hotcues
+            need_drop  = str(SLOT_DROP)  not in existing_hotcues
+        else:
+            need_vocal = False
+            need_drop  = False
+
+        if not any([need_load, need_first_beat, need_outro, need_vocal, need_drop]):
+            continue   # all relevant slots already set
 
         candidates += 1
         if limit and written >= limit:
@@ -525,25 +642,40 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
 
         # Compute cues
         if mode == "fast":
-            all_cues = compute_fast_cues(entry) or {}
+            all_cues_el = compute_fast_cues(entry) or {}
+            stalled_track = False
         else:
             first_beat_ms, bpm = parse_grid(entry)
             duration            = get_duration(entry)
             if audio_root:
-                # Remap path root for cross-machine operation
-                rel = Path(path).relative_to("/") if Path(path).is_absolute() else Path(path)
+                rel        = Path(path).relative_to("/") if Path(path).is_absolute() else Path(path)
                 audio_path = str(audio_root / rel)
             else:
                 audio_path = path
-            all_cues = compute_audio_cues(audio_path, first_beat_ms, bpm, duration)
 
-        # Keep only the slots that are actually missing for this track
-        if all_cues is None:
-            all_cues = {}
-        new_cues = {}
-        if need_load       and SLOT_LOAD        in all_cues: new_cues[SLOT_LOAD]        = all_cues[SLOT_LOAD]
-        if need_first_beat and SLOT_FIRST_BEAT  in all_cues: new_cues[SLOT_FIRST_BEAT]  = all_cues[SLOT_FIRST_BEAT]
-        if need_outro      and SLOT_OUTRO       in all_cues: new_cues[SLOT_OUTRO]        = all_cues[SLOT_OUTRO]
+            cue_data = worker.analyze(audio_path, first_beat_ms, bpm, duration)
+            if cue_data is None:
+                stalled_track = True
+                all_cues_el   = {}
+            else:
+                stalled_track = False
+                all_cues_el   = {slot: _data_to_element(slot, d)
+                                 for slot, d in cue_data.items()}
+
+        if stalled_track:
+            stalled.add(path)
+            print(f"  ✗ stall  {artist} — {title}", flush=True)
+            if apply:
+                save_progress(done, stalled)
+            continue
+
+        # Filter to only the slots this track actually needs
+        new_cues: dict[int, ET.Element] = {}
+        if need_load       and SLOT_LOAD        in all_cues_el: new_cues[SLOT_LOAD]       = all_cues_el[SLOT_LOAD]
+        if need_first_beat and SLOT_FIRST_BEAT  in all_cues_el: new_cues[SLOT_FIRST_BEAT] = all_cues_el[SLOT_FIRST_BEAT]
+        if need_vocal      and SLOT_VOCAL       in all_cues_el: new_cues[SLOT_VOCAL]      = all_cues_el[SLOT_VOCAL]
+        if need_drop       and SLOT_DROP        in all_cues_el: new_cues[SLOT_DROP]       = all_cues_el[SLOT_DROP]
+        if need_outro      and SLOT_OUTRO       in all_cues_el: new_cues[SLOT_OUTRO]      = all_cues_el[SLOT_OUTRO]
 
         if not new_cues:
             skipped_nd += 1
@@ -553,12 +685,10 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
 
         # Apply — write CUE_V2 elements into the entry
         if apply:
-            children     = list(entry)
+            children      = list(entry)
             existing_cues = entry.findall("CUE_V2")
 
-            # SLOT_LOAD (HOTCUE=0): Traktor auto-places this as TYPE=0 (AutoGrid
-            # duplicate). We update it to TYPE=3 (Load) in-place rather than adding
-            # a second HOTCUE=0 element which would confuse Traktor.
+            # SLOT_LOAD (HOTCUE=0): update TYPE in-place rather than adding a duplicate
             if SLOT_LOAD in new_cues:
                 updated_load = False
                 for cue_el in existing_cues:
@@ -568,32 +698,25 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
                         updated_load = True
                         break
                 if not updated_load:
-                    # No HOTCUE=0 at all (rare) — insert as new element
                     el = new_cues[SLOT_LOAD]
                     el.tail = "\n      "
-                    if existing_cues:
-                        idx = children.index(existing_cues[-1]) + 1
-                    else:
-                        idx = len(children)
+                    idx = children.index(existing_cues[-1]) + 1 if existing_cues else len(children)
                     entry.insert(idx, el)
 
-            # SLOT_FIRST_BEAT (HOTCUE=1): update in-place if already exists
+            # SLOT_FIRST_BEAT (HOTCUE=1): update in-place if already present
             if SLOT_FIRST_BEAT in new_cues:
                 existing_fb = next((c for c in entry.findall("CUE_V2")
                                     if c.get("HOTCUE") == str(SLOT_FIRST_BEAT)), None)
                 if existing_fb is not None:
                     existing_fb.set("TYPE", "1")
                     existing_fb.set("NAME", "Fade In")
-                    new_cues.pop(SLOT_FIRST_BEAT)   # handled; remove from insert list
+                    new_cues.pop(SLOT_FIRST_BEAT)
 
-            # All other slots: insert as new CUE_V2 elements
-            # Determine insertion point: after last existing CUE_V2
-            existing_cues = entry.findall("CUE_V2")   # refresh after possible insertion
+            # All other slots: insert as new elements after the last existing CUE_V2
+            existing_cues = entry.findall("CUE_V2")
             children      = list(entry)
-            if existing_cues:
-                insert_after = children.index(existing_cues[-1]) + 1
-            else:
-                insert_after = len(children)
+            insert_after  = (children.index(existing_cues[-1]) + 1
+                             if existing_cues else len(children))
 
             for slot in sorted(k for k in new_cues if k != SLOT_LOAD):
                 el = new_cues[slot]
@@ -601,7 +724,6 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
                 entry.insert(insert_after, el)
                 insert_after += 1
 
-            # Fix last child tail for clean XML formatting
             children = list(entry)
             if children:
                 children[-1].tail = "\n    "
@@ -614,37 +736,40 @@ def process_nml(nml_path: Path, mode: str, apply: bool, limit: int,
                         SLOT_VOCAL: "3", SLOT_DROP: "4", SLOT_OUTRO: "8(F)"}
         placed_str   = "+".join(slot_labels[s] for s in slots_placed)
         if apply:
-            print(f"  ✓ [{placed_str}]  {artist} — {title}")
+            print(f"  ✓ [{placed_str}]  {artist} — {title}", flush=True)
         else:
-            cue2 = new_cues.get(SLOT_FIRST_BEAT)
-            cue8 = new_cues.get(SLOT_OUTRO)
-            c2ms = f"{float(cue2.get('START')):.0f}ms" if cue2 is not None else "—"
-            c8ms = f"{float(cue8.get('START')):.0f}ms" if cue8 is not None else "—"
+            c2 = new_cues.get(SLOT_FIRST_BEAT)
+            c8 = new_cues.get(SLOT_OUTRO)
+            c2ms = f"{float(c2.get('START')):.0f}ms" if c2 is not None else "—"
+            c8ms = f"{float(c8.get('START')):.0f}ms" if c8 is not None else "—"
             print(f"  DRY [{placed_str}]  {artist} — {title}  |  C2={c2ms} C8={c8ms}")
 
         written += 1
 
         if written % 100 == 0:
-            print(f"  … {written} processed so far")
+            elapsed  = time.time() - t_start
+            rate     = written / elapsed if elapsed > 0 else 0
+            remaining = (candidates - written) / rate if rate > 0 else 0
+            eta_h    = int(remaining // 3600)
+            eta_m    = int((remaining % 3600) // 60)
+            print(f"  … {written:,} done | {candidates - written:,} remaining "
+                  f"| {rate:.1f} t/s | ETA ~{eta_h}h{eta_m:02d}m", flush=True)
             if apply:
-                save_progress(done)
+                save_progress(done, stalled)
 
     if apply and modified:
-        # Backup and write
         backup = nml_path.with_suffix(".nml.autocue_bak")
         shutil.copy2(nml_path, backup)
         print(f"\n  Backup → {backup.name}")
 
-        # Write with Traktor-compatible XML declaration
         tree.write(str(nml_path), encoding="utf-8", xml_declaration=False)
-        # Prepend the declaration Traktor expects
         content = nml_path.read_text(encoding="utf-8")
         nml_path.write_text(
             '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + content,
             encoding="utf-8"
         )
         print(f"  Saved  → {nml_path}")
-        save_progress(done)
+        save_progress(done, stalled)
 
     return candidates, written, skipped_nd
 
@@ -657,7 +782,7 @@ def report(nml_path: Path) -> None:
     total = has_autogrid = has_user_cues = no_bpm = target_empty = 0
     slot_counts = {SLOT_LOAD: 0, SLOT_FIRST_BEAT: 0,
                    SLOT_VOCAL: 0, SLOT_DROP: 0, SLOT_OUTRO: 0}
-    load_as_load_type = 0   # HOTCUE=0 already TYPE=3
+    load_as_load_type = 0
 
     for e in coll.findall("ENTRY"):
         total += 1
@@ -668,12 +793,11 @@ def report(nml_path: Path) -> None:
         hotcues  = {c.get("HOTCUE") for c in cues}
         if "-1" in hotcues:
             has_autogrid += 1
-        # Check if HOTCUE=0 is already TYPE=3 (already a Load cue)
         for c in cues:
             if c.get("HOTCUE") == "0" and c.get("TYPE") == "3":
                 load_as_load_type += 1
                 break
-        user     = existing_user_hotcues(e)
+        user = existing_user_hotcues(e)
         if user:
             has_user_cues += 1
         else:
@@ -682,6 +806,7 @@ def report(nml_path: Path) -> None:
             if str(slot) in hotcues:
                 slot_counts[slot] += 1
 
+    done, stalled = load_progress()
     print(f"\n  {nml_path.name}")
     print(f"  Total entries:                  {total:>7,}")
     print(f"  Has AutoGrid (has BPM grid):    {has_autogrid:>7,}")
@@ -693,6 +818,8 @@ def report(nml_path: Path) -> None:
     print(f"  Cue 3 (vocal) already set:      {slot_counts[SLOT_VOCAL]:>7,}")
     print(f"  Cue 4 (drop loop) already set:  {slot_counts[SLOT_DROP]:>7,}")
     print(f"  Cue 8 (fade-out) already set:   {slot_counts[SLOT_OUTRO]:>7,}")
+    print(f"  Progress — done:                {len(done):>7,}")
+    print(f"  Progress — stalled:             {len(stalled):>7,}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -706,25 +833,30 @@ def main():
     mode_group.add_argument("--fast",     action="store_true",
                             help="NML-only: write Cue 2 (first beat) + Cue 8 (outro). Fast, no audio.")
     mode_group.add_argument("--audio",    action="store_true",
-                            help="Audio analysis: write Cue 3 (vocal) + Cue 4 (drop loop). Requires librosa.")
+                            help="Audio analysis: write Cues 1, 2, 3, 4, 8. Requires librosa.")
     mode_group.add_argument("--all",      action="store_true",
-                            help="All four cues: fast NML cues + full audio analysis.")
+                            help="All cues: same as --audio.")
     mode_group.add_argument("--report",   action="store_true",
                             help="Show stats only, no changes.")
 
-    parser.add_argument("--apply",      action="store_true",
+    parser.add_argument("--apply",          action="store_true",
                         help="Write changes to NML files (default: dry-run only).")
-    parser.add_argument("--dry-run",    action="store_true",
+    parser.add_argument("--dry-run",        action="store_true",
                         help="Print what would be written without changing files (default).")
-    parser.add_argument("--limit",      type=int, default=0,
+    parser.add_argument("--limit",          type=int, default=0,
                         help="Max number of tracks to process per NML (0 = all).")
-    parser.add_argument("--nml",        type=str, default="",
+    parser.add_argument("--nml",            type=str, default="",
                         help="Path to a specific NML file. Default: both corrected and live.")
-    parser.add_argument("--audio-root", type=str, default="",
+    parser.add_argument("--audio-root",     type=str, default="",
                         help="Override audio file root directory (for cross-machine use).")
+    parser.add_argument("--timeout",        type=int, default=120,
+                        help="Per-track analysis timeout in seconds (default: 120). "
+                             "Stalled tracks are skipped and logged.")
     parser.add_argument("--reset-progress", action="store_true",
                         help="Clear the progress state file and start fresh.")
-    parser.add_argument("--verbose",    action="store_true",
+    parser.add_argument("--retry-stalled",  action="store_true",
+                        help="Retry tracks that previously stalled (clears stalled list).")
+    parser.add_argument("--verbose",        action="store_true",
                         help="Print every skipped track.")
     args = parser.parse_args()
 
@@ -750,13 +882,22 @@ def main():
         print()
         return
 
-    # Reset progress if requested
-    if args.reset_progress and STATE_FILE.exists():
-        STATE_FILE.unlink()
-        print("Progress state cleared.")
+    # Keep machine awake + run at low priority so it doesn't interfere with
+    # other work on the machine
+    keep_awake()
+    set_low_priority()
 
-    done = load_progress()
-    print(f"Progress: {len(done):,} tracks already processed in previous runs.")
+    done, stalled = load_progress()
+
+    if args.reset_progress:
+        done    = set()
+        stalled = set()
+        print("Progress state cleared.")
+    elif args.retry_stalled:
+        print(f"Clearing {len(stalled):,} stalled tracks for retry.")
+        stalled = set()
+
+    print(f"Progress: {len(done):,} done, {len(stalled):,} stalled from previous runs.")
 
     audio_root = Path(args.audio_root) if args.audio_root else None
     apply      = args.apply and not args.dry_run
@@ -767,30 +908,39 @@ def main():
 
     total_candidates = total_written = total_skipped = 0
 
-    for nml_path in nml_paths:
-        if args.fast:
-            mode = "fast"
-        else:
-            # audio or all — both use audio analysis
-            mode = "audio"
+    mode = "fast" if args.fast else "audio"
 
-        # For --fast, just do fast; for --audio or --all, do audio (includes fast cues)
-        c, w, s = process_nml(
-            nml_path, mode, apply, args.limit,
-            audio_root, done, verbose=args.verbose
-        )
-        total_candidates += c
-        total_written    += w
-        total_skipped    += s
+    # Start the worker process for audio mode
+    worker = None
+    if mode == "audio":
+        worker = TimeoutWorker(timeout=args.timeout)
+        print(f"  Worker started (PID {worker._proc.pid}) "
+              f"| timeout={args.timeout}s per track\n")
+
+    try:
+        for nml_path in nml_paths:
+            c, w, s = process_nml(
+                nml_path, mode, apply, args.limit,
+                audio_root, done, stalled,
+                worker=worker, verbose=args.verbose,
+            )
+            total_candidates += c
+            total_written    += w
+            total_skipped    += s
+    finally:
+        if worker:
+            worker.close()
 
     print(f"\n{'═'*60}")
-    print(f"  Candidates:      {total_candidates:,}")
-    print(f"  Written/queued:  {total_written:,}")
+    print(f"  Candidates:            {total_candidates:,}")
+    print(f"  Written/queued:        {total_written:,}")
     print(f"  Skipped (no BPM/data): {total_skipped:,}")
+    print(f"  Stalled (timeout):     {len(stalled):,}")
     if apply:
-        print(f"  Progress saved:  {len(done):,} tracks total")
+        print(f"  Progress saved:        {len(done):,} tracks total")
     print(f"{'═'*60}\n")
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()   # needed if ever compiled to .exe on Windows
     main()
