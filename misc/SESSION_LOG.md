@@ -1,3 +1,57 @@
+## SESSION 14 — April 25, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: The karaoke is showing the summary, not the lyrics. How do I know if position events are working?
+
+SKIPPY: lyrics_full (NML KEY_LYRICS) was the AI summary, not actual lyrics. Fixed to use lyrics_raw.json (lyrics_plain). Position wasn't flowing either — history file was 5 days old so HistoryWatcher never set a wall-clock start. Added client-side 200ms fallback timer so karaoke advances immediately from detection.
+
+CAPTAIN: Wow, karaoke is sort of working! The words are not synced with the music, but it is progressing the text.
+
+SKIPPY: That's the fallback timer. Real sync comes from HistoryWatcher after the first crossfade. Also: use Vocal In / Vocal Out cue points to lock the scroll window to the actual sung portion — no more guessing on intro length.
+
+CAPTAIN: Instead of empty lines to space it, let's look at cue points 3 and 6 for first and last vocals and figure out the playing time between them.
+
+SKIPPY: Brilliant. HOTCUE=2 is Vocal In, HOTCUE=5 is Vocal Out. Parsing them from NML at startup and distributing lyric lines across that window exactly.
+
+CAPTAIN: Expand from 5 to 7 lines, remove the word sweep, graduated opacity 35/65/100.
+
+SKIPPY: Done. 20/35/65/100/65/35/20 with plain textContent, no spans.
+
+CAPTAIN: It's brilliant. Expand to 7 lines. I love it.
+
+SKIPPY: Already 7.
+
+CAPTAIN: Some tracks say File can not be played in Traktor.
+
+SKIPPY: 878 orphaned _2 files (original missing, renamed collision copy present) — renamed them back. 185 true duplicates (both existed) — deleted the _2 copies, removed 9 stale NML entries. No unique content lost.
+
+CAPTAIN: Remove the recommended mix badges, hide them for now.
+
+SKIPPY: txBadge() returns empty. Data still calculated, just not rendered. Preserved for auto-transition mode later.
+
+**Key decisions made:**
+- lyrics_plain from state/lyrics_raw.json, not lyrics_full (NML KEY_LYRICS which holds the AI summary)
+- Parenthetical suffix stripping for title lookup ("The Great Commandment (extended radio mix)" → matches "the great commandment")
+- Client-side 200ms timer as position fallback — scrolls from detection time, real SSE position overrides when available
+- Karaoke scroll window anchored to Traktor Cue 3 (HOTCUE=2, Vocal In) + Cue 6 (HOTCUE=5, Vocal Out) — distributes lines across actual vocal span
+- 7 rolling lines with graduated opacity 20/35/65/100/65/35/20; word sweep removed entirely
+- Transition type badges (BEAT MATCH etc.) hidden pending rebuild as auto-transition mode
+- SSE reconnect guard: close old EventSource before opening new one; stale handlers discard events
+
+**Notable moments:**
+- The Snog "File can not be played" led to discovering 878 misnamed collision copies across the library — all fixed in one pass
+- Vocal cue approach makes the empty-line padding idea entirely obsolete
+- Captain said "It's brilliant" twice about the 7-line teleprompter
+
+**Files modified:**
+- `stage9_dj_suggest.py` — vocal_in_ms/vocal_out_ms on Track dataclass; cue parsing in load_tracks(); estimateLines() uses cue range; 7-line karaoke display; word sweep removed; txBadge() hidden; SSE leak fix; client-side fallback timer; deck cards width/overflow fix; parenthetical title lookup fallback
+- `misc/KARAOKE.md` — NEW: karaoke feature documentation
+- `misc/SESSION_LOG.md` — this entry
+
+---
+
 ## SESSION 1 — April 4–5, 2026
 **Players:** Captain Aaron Rhodes, Skippy the Magnificent
 

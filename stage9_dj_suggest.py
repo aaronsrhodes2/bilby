@@ -108,6 +108,8 @@ class Track:
     lyrics_full: str        = ""    # NML INFO KEY_LYRICS — full lyrics text (write_nml_lyrics.py)
     lyrics_plain: str       = ""    # LRCLIB plain lyrics from state/lyrics_raw.json (multi-line)
     lyrics_lrc:  str        = ""    # LRC timestamped lyrics from state/lyrics_lrc.json (if available)
+    vocal_in_ms: float      = 0.0   # NML CUE_V2 HOTCUE=2 "Vocal In"  (ms)
+    vocal_out_ms: float     = 0.0   # NML CUE_V2 HOTCUE=5 "Vocal Out" (ms)
     art_url:     str        = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
 
     @property
@@ -143,6 +145,8 @@ class Track:
             "lyrics_plain":  self.lyrics_plain or None,
             "lyrics_lrc":    self.lyrics_lrc   or None,
             "duration_ms":   round(self.duration * 1000),
+            "vocal_in_ms":   round(self.vocal_in_ms)  if self.vocal_in_ms  else None,
+            "vocal_out_ms":  round(self.vocal_out_ms) if self.vocal_out_ms else None,
             "art_url":       self.art_url or "",
             "is_instrumental": is_instrumental(self.title, lyric_theme, lyric_summary),
         }
@@ -285,6 +289,27 @@ def load_tracks(nml_path: Path) -> list[Track]:
         art_url = ART_INDEX.get(dk) or ""
         lrc     = LRC_CACHE.get(dk)   or ""
         plain   = PLAIN_CACHE.get(dk) or ""
+        # Fallback: strip trailing parenthetical "(extended ...)" / "(radio edit)" etc.
+        if not lrc or not plain:
+            base_title = re.sub(r"\s*\([^)]*\)\s*$", "", title.lower().strip()).strip()
+            if base_title != title.lower().strip():
+                dk2 = f"{artist.lower().strip()}\t{base_title}"
+                lrc   = lrc   or LRC_CACHE.get(dk2)   or ""
+                plain = plain or PLAIN_CACHE.get(dk2) or ""
+
+        # ── Parse vocal cue points (HOTCUE 2=Vocal In, 5=Vocal Out) ──────────
+        vocal_in_ms  = 0.0
+        vocal_out_ms = 0.0
+        for cue in e.findall("CUE_V2"):
+            hc = cue.get("HOTCUE", "-1")
+            try:
+                start = float(cue.get("START", 0))
+            except (ValueError, TypeError):
+                start = 0.0
+            if hc == "2":    # Vocal In
+                vocal_in_ms  = start
+            elif hc == "5":  # Vocal Out
+                vocal_out_ms = start
 
         # ── Parse COMMENT2 → theme + lyric_flags ──────────────────────────────
         # Format written by write_nml_comments.py:
@@ -321,6 +346,8 @@ def load_tracks(nml_path: Path) -> list[Track]:
             lyrics_full  = info.get("KEY_LYRICS", "") or "",
             lyrics_plain = plain,
             lyrics_lrc   = lrc,
+            vocal_in_ms  = vocal_in_ms,
+            vocal_out_ms = vocal_out_ms,
             art_url     = art_url,
         )))
 
@@ -1310,6 +1337,139 @@ def start_osc_server(state: OSCState, port: int) -> bool:
     return True
 
 
+# ── Traktor history watcher (fallback when OSC unavailable) ──────────────────
+#
+# Traktor Pro 4 removed the Generic OSC device type from Controller Manager.
+# As a fallback we poll the Traktor history NML, which Traktor appends to
+# every time a track is loaded onto a deck.  We call osc_state.on_message()
+# with the track info, simulating exactly what the OSC handler would deliver.
+# Position is driven by wall-clock elapsed time since detection — close enough
+# for estimated-timing karaoke and live suggestions.
+
+class HistoryWatcher(threading.Thread):
+    HISTORY_DIR = Path.home() / "Documents/Native Instruments/Traktor 4.0.2/History"
+    POLL_SECS   = 1.0
+    POSITION_HZ = 5        # position ticks per second while a deck is playing
+
+    def __init__(self, osc_state: "OSCState", track_index: dict):
+        super().__init__(daemon=True, name="HistoryWatcher")
+        self._osc        = osc_state
+        self._index      = track_index   # abs path → Track
+        self._stop_ev    = threading.Event()
+        self._deck_start: dict[str, float] = {}   # "0"/"1" → wall clock when detected
+
+    def stop(self):
+        self._stop_ev.set()
+
+    def _latest_file(self) -> Path | None:
+        try:
+            files = sorted(self.HISTORY_DIR.glob("history_*.nml"))
+            return files[-1] if files else None
+        except Exception:
+            return None
+
+    def _parse_entries(self, path: Path) -> list[dict]:
+        try:
+            tree = ET.parse(path)
+            out  = []
+            for entry in tree.getroot().iter("ENTRY"):
+                pk = entry.find("PRIMARYKEY")
+                ex = entry.find("EXTENDEDDATA")
+                if pk is None or ex is None:
+                    continue
+                out.append({
+                    "key":   pk.get("KEY", ""),
+                    "deck":  ex.get("DECK", "0"),
+                    "start": ex.get("STARTTIME", "0"),
+                })
+            return out
+        except Exception:
+            return []
+
+    @staticmethod
+    def _key_to_path(key: str) -> str:
+        """'Macintosh HD/:Users/:…' → '/Users/…'"""
+        idx = key.find("/:")
+        return key[idx:].replace("/:", "/") if idx >= 0 else key
+
+    def _push_track(self, deck_num: str, key: str):
+        deck = "a" if deck_num == "0" else "b"
+        path = self._key_to_path(key)
+        t    = self._index.get(path)
+        if t:
+            self._osc.on_message(deck, "title",  t.title)
+            self._osc.on_message(deck, "artist", t.artist)
+        else:
+            parts  = [p for p in path.split("/") if p]
+            title  = Path(parts[-1]).stem if parts          else "Unknown"
+            artist = parts[-3]            if len(parts) >= 3 else ""
+            self._osc.on_message(deck, "title",  title)
+            self._osc.on_message(deck, "artist", artist)
+        self._osc.on_message(deck, "play", "1")
+        self._deck_start[deck_num] = time.time()
+
+    def run(self):
+        hist_file:  Path | None = None
+        last_mtime: float       = 0.0
+        seen_ids:   set[str]    = set()
+        last_tick:  float       = time.time()
+
+        while not self._stop_ev.is_set():
+            now = time.time()
+
+            # ── Position ticks for playing decks ───────────────────────────
+            if now - last_tick >= 1.0 / self.POSITION_HZ:
+                last_tick = now
+                for deck_num, wall_start in list(self._deck_start.items()):
+                    deck = "a" if deck_num == "0" else "b"
+                    self._osc.on_message(deck, "elapsed_time",
+                                         str(now - wall_start))
+
+            # ── Detect new Traktor session (new history file) ──────────────
+            new_file = self._latest_file()
+            if new_file != hist_file:
+                hist_file  = new_file
+                last_mtime = 0.0
+                seen_ids   = set()
+
+            if not hist_file:
+                time.sleep(self.POLL_SECS)
+                continue
+
+            try:
+                mtime = hist_file.stat().st_mtime
+            except OSError:
+                time.sleep(self.POLL_SECS)
+                continue
+
+            if mtime != last_mtime:
+                last_mtime = mtime
+                entries    = self._parse_entries(hist_file)
+
+                if not seen_ids:
+                    # First read — mark all existing as seen so we don't
+                    # replay history.  Only pre-populate deck state if the
+                    # history file is fresh (< 4 hours old) — avoids pushing
+                    # stale days-old tracks as "currently playing".
+                    file_age = time.time() - mtime
+                    fresh    = file_age < 4 * 3600
+                    latest: dict[str, dict] = {}
+                    for e in entries:
+                        latest[e["deck"]] = e
+                        seen_ids.add(f"{e['deck']}:{e['key']}:{e['start']}")
+                    if fresh:
+                        for e in latest.values():
+                            self._push_track(e["deck"], e["key"])
+                else:
+                    for e in entries:
+                        uid = f"{e['deck']}:{e['key']}:{e['start']}"
+                        if uid not in seen_ids:
+                            seen_ids.add(uid)
+                            self._push_track(e["deck"], e["key"])
+
+            time.sleep(self.POLL_SECS)
+
+
 # ── Flask app ─────────────────────────────────────────────────────────────────
 
 HTML = r"""<!DOCTYPE html>
@@ -1582,17 +1742,19 @@ body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!i
 .bg{margin-bottom:12px}
 .bg-dest{font-size:10px;color:var(--col3);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid var(--col3)}
 .empty{color:var(--text3);padding:16px;font-size:12px;text-align:center;line-height:1.8}
-.deck-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-#karaoke-panel{padding:12px 10px 4px;text-align:center;border-top:1px solid var(--border);margin-top:10px}
-.kl{padding:2px 0;line-height:1.55;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.kl-prev{font-size:11px;color:var(--text);opacity:0.28}
-.kl-curr{font-size:14px;color:var(--text);font-weight:600;letter-spacing:0.01em}
-.kl-next{font-size:11px;color:var(--text);opacity:0.28}
-.kl-word-hi{color:#fff;opacity:1!important}
-.kl-word-lead{opacity:0.55!important}
+.deck-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;width:100%;box-sizing:border-box}
+#anc-lyric{margin-top:8px}
+.kl{padding:1px 0;line-height:1.5;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
+.kl-prev3{font-size:10px;color:var(--text);opacity:0.20}
+.kl-prev2{font-size:11px;color:var(--text);opacity:0.35}
+.kl-prev {font-size:12px;color:var(--text);opacity:0.65}
+.kl-curr {font-size:14px;color:var(--text);font-weight:600;letter-spacing:0.01em}
+.kl-next {font-size:12px;color:var(--text);opacity:0.65}
+.kl-next2{font-size:11px;color:var(--text);opacity:0.35}
+.kl-next3{font-size:10px;color:var(--text);opacity:0.20}
+/* kl-word-hi / kl-word-lead removed — word sweep retired */
 .kl-status{font-size:9px;color:var(--text3);text-align:right;padding:0 2px 2px;opacity:0.5;letter-spacing:0.05em}
-body.passthrough #karaoke-panel{display:none!important}
-.dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--card-bg);transition:border-color .15s}
+.dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--card-bg);transition:border-color .15s;min-width:0;overflow:hidden}
 .dc:hover{border-color:var(--border2);background:var(--bg4)}
 .dc.dc-idle{border-color:var(--border);color:var(--text3)}
 .dc.dc-loaded{border-color:var(--border2);background:var(--bg4)}
@@ -1600,7 +1762,7 @@ body.passthrough #karaoke-panel{display:none!important}
 .dc .dc-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;color:var(--text3);font-family:var(--lbl-font)}
 .dc.dc-loaded .dc-label{color:var(--text2)}
 .dc.dc-playing .dc-label{color:var(--accent)}
-.dc .dc-name{font-size:12px;line-height:1.4}
+.dc .dc-name{font-size:12px;line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .dc .dc-artist{color:var(--text2)}.dc .dc-title{color:var(--text)}.dc .dc-sep{color:var(--text3)}
 .dc .dc-meta{font-size:10px;color:var(--meta);margin-top:3px}
 .dc.dc-loaded .dc-meta{color:var(--text2)}
@@ -1862,12 +2024,6 @@ body.passthrough #add-track-zone{display:none !important}
     <div class="col-hdr">① Selected Song</div>
     <div class="col-body" id="b1">
       <div class="empty">Load a track in Traktor<br>— or search above.</div>
-      <div id="karaoke-panel" hidden>
-        <div class="kl-status" id="kl-status"></div>
-        <div class="kl kl-prev" id="kl-prev"></div>
-        <div class="kl kl-curr" id="kl-curr"></div>
-        <div class="kl kl-next" id="kl-next"></div>
-      </div>
     </div>
   </div>
   <div class="col" id="c2">
@@ -2259,8 +2415,9 @@ function stars(n){
 const TX_CLASS={'BEAT MATCH':'beat','BEAT+FRAGMENT':'frag','BEAT+FX':'beatfx',
   'STEM BLEND':'stem','BLEND':'blend','LOOP DROP':'loop','EFFECT FADE':'efx','CUT':'cut'};
 function txBadge(t){
-  if(!t.transition)return'';
-  return`<span class="tx tx-${TX_CLASS[t.transition]||'cut'}">${t.transition}</span>`;
+  // Hidden pending rebuild as auto-transition mode — data still calculated, just not shown
+  return'';
+  // return`<span class="tx tx-${TX_CLASS[t.transition]||'cut'}">${t.transition}</span>`;
 }
 function repBadge(t){
   let out='';
@@ -2285,6 +2442,8 @@ function instrBadge(t){
   return t.is_instrumental?'<span class="instr-badge" title="Instrumental — no vocals">♬ INSTR</span>':'';
 }
 function lyricLine(t){
+  // Plain summary line — used in suggestion cards. #anc-lyric wrapper is
+  // added only in loadAnchor() so the ID is unique in the DOM.
   if(!t.lyric_summary)return'';
   return`<div class="lyric-summary">♪ ${esc(t.lyric_summary)}</div>`;
 }
@@ -2462,9 +2621,13 @@ async function setDeckAnchor(deck){
 }
 
 // ── SSE — auto-detect from Traktor ─────────────────────────────────────────
+let _sseSource=null;
 function connectSSE(){
+  if(_sseSource){try{_sseSource.close();}catch(e){} _sseSource=null;}
   const es=new EventSource('/api/events');
+  _sseSource=es;
   es.onmessage=e=>{
+    if(es!==_sseSource) return;  // stale — discard
     const d=JSON.parse(e.data);
     if(d.type==='connected'){
       setOscOn();
@@ -2478,7 +2641,10 @@ function connectSSE(){
       if(_karLines&&_karDeck===d.deck){
         if(!_karLive){
           _karLive=true;
-          document.getElementById('kl-status').textContent=_karStatusText(d.elapsed*1000);
+          // Real position events are flowing — kill the client-side fallback timer
+          if(_karTimerId){clearInterval(_karTimerId);_karTimerId=null;}
+          const st=document.getElementById('kl-status');
+          if(st) st.textContent=_karStatusText(d.elapsed*1000);
         }
         renderKaraoke(_karLines,d.elapsed*1000);
       }
@@ -2487,6 +2653,7 @@ function connectSSE(){
     if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist,d.type==='playing');
   };
   es.onerror=()=>{
+    if(es!==_sseSource) return;  // stale
     oscEl.textContent='SSE…';oscEl.className='off';
     setTimeout(connectSSE,3000);
   };
@@ -2556,10 +2723,13 @@ async function deckLoaded(deck,title,artist,isPlaying=false){
 }
 
 // ── Karaoke lyrics display ─────────────────────────────────────────────────
-let _karLines=null;   // [{ms,text}] for playing track, or null
-let _karDeck=null;    // 'a'|'b'|null
-let _karMode='';      // 'lrc' | 'est' | ''
-let _karLive=false;   // true once a real position event has arrived for this track
+let _karLines=null;     // [{ms,text}] for playing track, or null
+let _karDeck=null;      // 'a'|'b'|null — deck being tracked for position events
+let _karAnchor=null;    // anchor track object currently driving karaoke
+let _karMode='';        // 'lrc' | 'est' | ''
+let _karLive=false;     // true once a real position event has arrived for this track
+let _karWallStart=0;    // Date.now() when karaoke source was set — fallback timer base
+let _karTimerId=null;   // setInterval id for client-side position fallback
 
 function parseLRC(lrc){
   const lines=[];
@@ -2574,16 +2744,34 @@ function parseLRC(lrc){
   return lines;
 }
 
-function estimateLines(plainText,durationMs){
-  const lines=(plainText||'').split('\n').filter(l=>l.trim());
-  if(!lines.length||!durationMs) return null;
-  const step=durationMs/lines.length;
-  return lines.map((text,i)=>({ms:i*step,text}));
+function estimateLines(plainText,durationMs,vocalInMs,vocalOutMs){
+  if(!plainText||!durationMs) return null;
+  // Strip Genius/scraping artifacts: "N ContributorSong Title Lyrics\n"
+  let cleaned=plainText.replace(/^\d+\s+Contributor[^\n]*\n?/,'');
+  // Keep only real lyric lines — drop section headers [Intro]/[Chorus] and blank lines
+  const lines=cleaned.split('\n')
+    .map(l=>l.trim())
+    .filter(l=>l&&!/^\[.*\]$/.test(l));
+  if(!lines.length) return null;
+
+  // Use vocal cue range when available (Traktor HOTCUE 2=Vocal In, 5=Vocal Out)
+  // This distributes lines across the actual sung portion of the track.
+  const hasVocalCues = vocalInMs>0 && vocalOutMs>0 && vocalOutMs>vocalInMs;
+  const startMs = hasVocalCues ? vocalInMs  : 0;
+  const endMs   = hasVocalCues ? vocalOutMs : durationMs;
+  const span    = endMs - startMs;
+
+  const step=span/lines.length;
+  return lines.map((text,i)=>({ms:startMs+i*step,text}));
 }
 
 function getLyricLines(track){
   if(track&&track.lyrics_lrc){   _karMode='lrc'; return parseLRC(track.lyrics_lrc); }
-  if(track&&track.lyrics_plain){ _karMode='est'; return estimateLines(track.lyrics_plain,track.duration_ms); }
+  if(track&&track.lyrics_plain){
+    _karMode='est';
+    return estimateLines(track.lyrics_plain,track.duration_ms,
+                         track.vocal_in_ms||0, track.vocal_out_ms||0);
+  }
   _karMode=''; return null;  // no lyrics — panel stays hidden
 }
 
@@ -2593,19 +2781,48 @@ function _karStatusText(elapsedMs){
   return '';
 }
 
+function _summaryHtml(t){
+  // Restore the summary text for a given track (or blank if none)
+  if(t&&t.lyric_summary) return`<div class="lyric-summary">♪ ${esc(t.lyric_summary)}</div>`;
+  return'';
+}
+
 function updateKaraokeSource(){
-  const deck=deckPlaying.a?'a':deckPlaying.b?'b':null;
-  const panel=document.getElementById('karaoke-panel');
-  if(!deck||!deckTracks[deck]){
-    panel.hidden=true; _karLines=null; _karDeck=null; _karMode=''; _karLive=false; return;
-  }
-  if(deck===_karDeck) return;  // already tracking this deck
-  _karDeck=deck; _karLive=false;
-  _karLines=getLyricLines(deckTracks[deck]);
-  panel.hidden=!_karLines;
+  const el=document.getElementById('anc-lyric');
+  if(!el||!anchor) return;
+
+  // Which deck is the anchor on? Use play-state first, fall back to path match.
+  const deck=deckPlaying.a?'a':deckPlaying.b?'b':
+    (deckTracks.a&&deckTracks.a.path&&anchor.path&&deckTracks.a.path===anchor.path)?'a':
+    (deckTracks.b&&deckTracks.b.path&&anchor.path&&deckTracks.b.path===anchor.path)?'b':null;
+
+  // Always use the anchor track for karaoke — it IS the selected/playing track.
+  if(anchor===_karAnchor&&_karLines) return;  // already set up for this anchor
+  // Clear previous fallback timer
+  if(_karTimerId){clearInterval(_karTimerId);_karTimerId=null;}
+  _karAnchor=anchor; _karDeck=deck; _karLive=false;
+  _karLines=getLyricLines(anchor);
+
   if(_karLines){
+    _karWallStart=Date.now();
+    el.innerHTML=`<div class="kl-status" id="kl-status"></div>`+
+      `<div class="kl kl-prev3" id="kl-prev3"></div>`+
+      `<div class="kl kl-prev2" id="kl-prev2"></div>`+
+      `<div class="kl kl-prev"  id="kl-prev"></div>`+
+      `<div class="kl kl-curr"  id="kl-curr"></div>`+
+      `<div class="kl kl-next"  id="kl-next"></div>`+
+      `<div class="kl kl-next2" id="kl-next2"></div>`+
+      `<div class="kl kl-next3" id="kl-next3"></div>`;
     document.getElementById('kl-status').textContent=_karStatusText(0);
     renderKaraoke(_karLines,0);
+    // Client-side fallback: advance display at 5 Hz until real position events arrive
+    _karTimerId=setInterval(()=>{
+      if(!_karLive&&_karLines){
+        renderKaraoke(_karLines,Date.now()-_karWallStart);
+      }
+    },200);
+  } else {
+    el.innerHTML=_summaryHtml(anchor);
   }
 }
 
@@ -2616,32 +2833,35 @@ function renderKaraoke(lines,elapsedMs){
     if(lines[i].ms<=elapsedMs) idx=i; else break;
   }
 
-  // Previous line
-  const prevText=idx>0?lines[idx-1].text:'';
-
-  // Current line — sweep active word
-  const curr=lines[idx];
-  const next=lines[idx+1]||null;
-  const lineEnd=next?next.ms:elapsedMs+5000;
-  const words=curr.text.split(' ');
-  const pct=Math.min((elapsedMs-curr.ms)/Math.max(lineEnd-curr.ms,1),1);
-  const wi=Math.min(Math.floor(pct*words.length),words.length-1);
-  const currHtml=words.map((w,i)=>
-    i===wi?`<span class="kl-word-hi">${esc(w)}</span>`:esc(w)
-  ).join(' ');
-
-  // Next line — first word as jog prompt
-  let nextHtml='';
-  if(next){
-    const nw=next.text.split(' ');
-    nextHtml=nw.map((w,i)=>
-      i===0?`<span class="kl-word-lead">${esc(w)}</span>`:esc(w)
-    ).join(' ');
+  // Helper: nth non-blank line before/after idx (n=1 → nearest)
+  function nearbyLine(dir,n){
+    let found=0;
+    for(let i=idx+dir;i>=0&&i<lines.length;i+=dir){
+      if(lines[i].text&&++found===n) return lines[i].text;
+    }
+    return'';
   }
 
-  document.getElementById('kl-prev').textContent=prevText;
-  document.getElementById('kl-curr').innerHTML=currHtml;
-  document.getElementById('kl-next').innerHTML=nextHtml;
+  // Previous three lines
+  const prev3Text=nearbyLine(-1,3);
+  const prev2Text=nearbyLine(-1,2);
+  const prevText =nearbyLine(-1,1);
+
+  // Current line — plain text, no word sweep
+  const curr=lines[idx];
+
+  // Next three lines
+  const next1Text=nearbyLine(1,1);
+  const next2Text=nearbyLine(1,2);
+  const next3Text=nearbyLine(1,3);
+
+  document.getElementById('kl-prev3').textContent=prev3Text;
+  document.getElementById('kl-prev2').textContent=prev2Text;
+  document.getElementById('kl-prev').textContent =prevText;
+  document.getElementById('kl-curr').textContent =curr.text;
+  document.getElementById('kl-next').textContent =next1Text;
+  document.getElementById('kl-next2').textContent=next2Text;
+  document.getElementById('kl-next3').textContent=next3Text;
 }
 
 // ── Manual search ───────────────────────────────────────────────────────────
@@ -2690,7 +2910,7 @@ async function loadAnchor(track,deck){
   const boxCls='anchor-box'+(track.is_instrumental?' instrumental':'');
   const anchorHtml=`<div class="${boxCls}" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
-    ${meta(track,false)}${badgeRow}${lyricLine(track)}</div>`;
+    ${meta(track,false)}${badgeRow}<div id="anc-lyric">${lyricLine(track)}</div></div>`;
   if(cardsEl){
     const ab=b1.querySelector('.anchor-box');
     if(ab) ab.outerHTML=anchorHtml;
@@ -2700,6 +2920,7 @@ async function loadAnchor(track,deck){
     b1.innerHTML=anchorHtml;
     renderDeckCards();
   }
+  _karAnchor=null; _karDeck=null; updateKaraokeSource();  // re-inject into fresh #anc-lyric
   b2.innerHTML='<div class="empty">Loading…</div>';
   b3.innerHTML='<div class="empty">Loading…</div>';
   const deckParam=deck?'&deck='+encodeURIComponent(deck):'';
@@ -3514,6 +3735,12 @@ def main():
     index = {t.path: t for t in tracks}
     start_lsof_watcher(tracks, index, osc_state)
     print(f"  Deck watcher: polling Traktor every 2s via lsof")
+
+    # ── History watcher — track info + position via Traktor history NML ───────
+    # Traktor Pro 4 removed Generic OSC; we watch the history file instead.
+    hw = HistoryWatcher(osc_state, index)
+    hw.start()
+    print(f"  History watcher: watching {HistoryWatcher.HISTORY_DIR.name}/")
 
     flask_thread = threading.Thread(
         target=lambda: app.run(host=os.environ.get("STAGE9_HOST", "0.0.0.0"), port=PORT,
