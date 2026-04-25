@@ -3116,7 +3116,7 @@ def main():
     print(f"  Deck watcher: polling Traktor every 2s via lsof")
 
     flask_thread = threading.Thread(
-        target=lambda: app.run(host="127.0.0.1", port=PORT,
+        target=lambda: app.run(host=os.environ.get("STAGE9_HOST", "0.0.0.0"), port=PORT,
                                debug=False, use_reloader=False, threaded=True),
         daemon=True,
     )

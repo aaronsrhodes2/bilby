@@ -1,0 +1,8 @@
+## git-crypt — sensitive data encrypted at rest in the remote repo.
+## Anyone without the symmetric key sees binary garbage for these files.
+## Mac and PC unlock automatically after `git-crypt unlock <keyfile>`.
+
+state/lyrics_raw.json     filter=git-crypt diff=git-crypt
+state/lyrics_dedup.json   filter=git-crypt diff=git-crypt
+state/lyrics_summary.json filter=git-crypt diff=git-crypt
+misc/reputation_flags.json filter=git-crypt diff=git-crypt
