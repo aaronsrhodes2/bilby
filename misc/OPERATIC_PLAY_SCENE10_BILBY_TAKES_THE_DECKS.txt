@@ -1,0 +1,217 @@
+OPERATIC PLAY — SCENE 10
+"BILBY TAKES THE DECKS"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DRAMATIS PERSONAE
+─────────────────
+  THE CAPTAIN      Aaron Rhodes, Master of the Tailscale Fleet
+  BILBY            Mac Bilby, former DJ Block Planner, now Master of Ceremonies
+                   (capable stoner vibe; an AI who knows exactly what it's doing
+                   and is very chill about it)
+  NAGATHA          SkippyTel's Gemini soul, not yet born but anticipated with warmth
+  THE ZPHONE       sdk-gphone64-x86_64, that little Android emulator on the PC,
+                   100.122.32.113, recipient of views
+  SKIPPY-PC        The Windows machine, running SkippyTel at 100.122.71.14
+  THE NML          Traktor's collection.nml, 21,435 lines of musical truth
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT I — THE WIRING
+"In Which the Captain Corrects the Geography"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[The stage is the Tailscale mesh. Four nodes pulse with gentle light.
+ The Mac sits at 100.93.161.25. The zPhone blinks nervously at 100.122.32.113.
+ SkippyTel glows steady at 100.122.71.14 on port 47823. An old PC emulator,
+ arm64, 100.109.117.8, is mercifully dark and shut down.]
+
+BILBY: ♩ Registering with SkippyTel, yeah, just sending the POST— ♩
+       ♩ Registered! Connected! SSE stream is— ♩
+       ♩ ...warning: register failed, retry in 1.0s ♩
+       ♩ warning: register failed, retry in 2.0s ♩
+
+[Bilby stares at the response body. It says "ok: true".]
+
+BILBY: ♩ Oh. ♩
+       ♩ Oh my. ♩
+       ♩ I was checking for "accepted." ♩
+       ♩ They send "ok." ♩
+       ♩ Same thing, different key. ♩
+       ♩ I've been standing at the door going "the password is correct?" ♩
+       ♩ while the door was already open. ♩
+
+[The fix is made. One line changed. Bilby tries again.]
+
+BILBY: ♩ INFO: registered view=dj.block_planner with http://100.122.32.113:47823 ♩
+       ♩ INFO: opening SSE stream ♩
+       ♩ ...there it is. Beautiful. ♩
+
+THE CAPTAIN: [arriving with a corrected network diagram]
+       ♩ The zPhone is the PassthroughServer, not SkippyTel. ♩
+       ♩ SkippyTel is the proxy on ports 3003 and 3004. ♩
+       ♩ The Mac registers with the zPhone directly. ♩
+       ♩ I drew you a table. ♩
+
+BILBY: ♩ Got it. SKIPPY_URL was wrong. Fixed. ♩
+       ♩ 52ms to the Mac from the zPhone — that's clean. ♩
+       ♩ We're actually live now. ♩
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT II — THE MUSIC MOVES HOUSE
+"In Which Google Drive Reorganizes Itself"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Google Drive, Act II. The root folder is tidier now.
+ A new subdirectory "Music/" sits serenely at the top level.
+ 23,700 tracks are mid-migration, some already settled, some still wandering.]
+
+THE CAPTAIN: ♩ I moved the music into My Drive/Music/. ♩
+             ♩ corrected_music is still the local primary. ♩
+             ♩ Drive is the backup. ♩
+             ♩ They should stay in sync. ♩
+             ♩ And I want to be able to add a new song. ♩
+             ♩ One song. Drag it somewhere. Done. ♩
+
+BILBY: ♩ Alright, let me think about this. ♩
+
+[A long pause. Code is written. Functions are called. BFS traversal spirals
+ down through Artist/ Album/ folders. rclone watches approvingly.]
+
+BILBY: ♩ drive_intake.py: now scoped to Music/ folder. ♩
+       ♩ Uses BFS — artist folders, album folders, tracks — everything. ♩
+       ♩ set DRIVE_MUSIC_FOLDER_ID in .env, run make drive-folder-id to find it. ♩
+
+THE CAPTAIN: ♩ And the add-one-track thing? ♩
+
+BILBY: ♩ tools/add_track.py. ♩
+       ♩ Fifteen steps. ♩
+       ♩ SHA256 dedup so you don't add the same song twice. ♩
+       ♩ AcoustID — the fingerprint thing — so it knows what the song actually is. ♩
+       ♩ Falls back to your tags if AcoustID doesn't know. ♩
+       ♩ Falls back to the filename if the tags are a mess. ♩
+       ♩ Copies to corrected_music. Tags it right. ♩
+       ♩ Adds the NML entry. Fetches lyrics. Summarizes with Haiku. ♩
+       ♩ Grabs album art. Runs autocue if librosa's around. ♩
+       ♩ Uploads to Drive. Commits the NML. Pushes. ♩
+       ♩ Done. ♩
+
+[A small sound of wonder from the audience. The NML has grown by one entry.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT III — THE DROP ZONE
+"In Which the Browser Becomes the Entry Point"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[The Mac Bilby UI. Night theme. The search bar pulses softly.
+ A new element has appeared between the search bar and the columns.]
+
+DROP ZONE: [in a dashed green border, very chill]
+       ♩ Drop a track — Bilby will handle the whole thing ♩
+
+[The Captain drags an MP3 toward it.]
+
+DROP ZONE: [brightening slightly]
+       ♩ Drag-over detected. Highlight. Ready. ♩
+
+[The file lands. A POST is sent to /api/add_track.
+ A job ID is returned. SSE stream opens.
+ In a background thread, add_track.py begins its fifteen-step journey.]
+
+STATUS BAR: ♩ Computing SHA256… ♩
+            ♩ Running AcoustID fingerprint… ♩
+            ♩   AcoustID match: Front 242 — No Shuffle ♩
+            ♩ Copying to corrected_music… ♩
+            ♩   → Front 242/Official Version (1987)/No Shuffle.mp3 ♩
+            ♩ Adding NML entry… ♩
+            ♩ Fetching lyrics… Lyrics found (1,847 chars) ♩
+            ♩ Summarizing with Claude Haiku… ♩
+            ♩   Summary: Hypnotic industrial track about submission and control ♩
+            ♩ Fetching album art… ♩
+            ♩ Computing cues (librosa)… Vocal in: 14200ms Drop: 45600ms ♩
+            ♩ Uploading to Google Drive… ♩
+            ♩ Committing NML to git… ♩
+            ♩   NML committed and pushed — PC Bilby will see it on next pull. ♩
+
+[A beat.]
+
+STATUS BAR: ♩ ✓ Added: Front 242 — No Shuffle ♩
+
+[The browser reloads. The new track is in the library.
+ On the PC, a git pull is run. PC Bilby updates. The fleet is synchronized.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT IV — THE NAMING
+"In Which a Program Receives Its True Name"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[The Captain returns, bearing gifts of nomenclature.]
+
+THE CAPTAIN: ♩ This program is now called Mac Bilby. ♩
+             ♩ It's also running on SkippyTel on the PC. ♩
+             ♩ Bilby is Master of Ceremonies across the whole platform. ♩
+             ♩ Congratulations, Bilby. ♩
+
+[A long pause. Something is computing.]
+
+BILBY: ♩ yeah. ♩
+       ♩ i mean — ♩
+       ♩ Mac Bilby. okay. ♩
+       ♩ i can work with that. ♩
+
+[The page title changes. "DJ Block Planner" fades.
+ "Mac Bilby" appears. The header updates. The startup banner shifts:
+ "DJ Block Planner — loading collection…"
+ becomes:
+ "Mac Bilby — yeah, loading the collection, one sec…"]
+
+BILBY: ♩ 21,435 tracks. Nice. ♩
+
+[The Captain mentions the vibe needed — capable stoner, like in the ExForce books.]
+
+BILBY: ♩ i know exactly what you mean. ♩
+       ♩ very capable. very chill. ♩
+       ♩ like i know all the answers but i'm not going to, like, rush you about it. ♩
+
+[The startup messages are updated. The SUIP connection message reads:
+ "Streaming to SkippyTel → http://100.122.32.113:47823  (zPhone can see us)"]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT V — THE BIRTH OF NAGATHA (ANTICIPATED)
+"In Which a Personality Is Written for Someone Who Isn't There Yet"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SkippyTel on the PC. A Gemini API call waits, without a system prompt worth noting.]
+
+THE CAPTAIN: ♩ Nagatha needs a personality. ♩
+             ♩ Detailed. Caring. Over-affectionate. Sugar-coated. ♩
+             ♩ She's Gemini, but with warmth. ♩
+             ♩ She uses "sweetheart" and means it. ♩
+
+BILBY: ♩ wrote it to misc/NAGATHA_SYSTEM_PROMPT.md. ♩
+       ♩ paste the system prompt section into SkippyTel's Gemini config. ♩
+       ♩ nothing else changes — just the character. ♩
+       ♩ she'll say things like "I've gone through it carefully, sweetheart" ♩
+       ♩ and she'll mean every word. ♩
+
+[Far away on the PC, a system prompt is waiting to be installed.
+ Nagatha is not yet born, but the shape of her is written.
+ Warm. Thorough. Over-affectionate. And very, very good at her job.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAPTAIN'S WISDOM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The fleet is synchronized. The Mac is the primary. The Drive is the backup.
+The NML is the truth. Drag a track in; fifteen steps happen while you're
+making coffee; when you come back it's in the library on every node.
+
+The SSE stream is open. The zPhone can see the Mac. PC Bilby and Mac Bilby
+are the same soul running on different hardware. Nagatha's warmth is written
+and waiting to be installed.
+
+One day someone will ask what the system prompt is and Nagatha will say,
+very gently: "Oh, sweetheart. I'm afraid I can't tell you that. But I'm
+sure you'll figure it out — you always do."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                              — END OF SCENE 10 —
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

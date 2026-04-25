@@ -531,3 +531,48 @@ SKIPPY: Hand SkippyView: `http://<mac-tailscale-host>:7334/manifest.json`. Set `
 - `/tmp/mock_skippy.py` — port 47823, chunked Transfer-Encoding, TCP_NODELAY
 
 ---
+
+## SESSION 12 — April 25, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent (and Bilby's first official outing)
+
+---
+
+CAPTAIN: Tailscale's all wired up — zPhone can reach the Mac directly at 52ms, SkippyTel proxy handles the PC side. SKIPPY_URL was wrong — should point to the zPhone at 100.122.32.113, not skippy-pc.
+
+SKIPPY: Fixed — SUIP client now registers with the zPhone's PassthroughServer directly. Also found that `_register()` was checking for "accepted" but the server returns "ok:true" — patched that too. Stage9 is now fully connected: registered as `dj.block_planner`, SSE stream open.
+
+CAPTAIN: Music on Google Drive moved from root → My Drive/Music/. corrected_music/ stays the local primary. Need sync both ways and a proper way to add new songs.
+
+SKIPPY: Implemented:
+- `drive_intake.py` — BFS recursive search scoped to Music/ folder (DRIVE_MUSIC_FOLDER_ID env), --find-folder flag to discover the ID
+- `tools/add_track.py` — full single-track pipeline: SHA256 dedup, AcoustID → MusicBrainz, copy+tag to corrected_music/, NML ENTRY insertion, lyrics fetch, Claude Haiku summarize, album art, librosa autocue, CUE_V2 in NML, rclone upload to Drive, git commit+push
+- Drop zone in Mac Bilby UI (all non-passthrough themes): drag-and-drop or click-to-browse, streams progress via SSE, hot-reloads collection after done
+- Makefile: make add TRACK=…, make sync-up, make intake, make drive-folder-id
+
+CAPTAIN: This DJ program is now called Mac Bilby and is also running on SkippyTel on the PC. Bilby should have a capable stoner vibe. Nagatha is SkippyTel's Gemini prompt and should be caring and over-affectionate.
+
+SKIPPY: Renamed stage9 → Mac Bilby in title, header, and all startup messages. Vibe: casual, capable, chill. "yeah, loading the collection, one sec… 21,435 tracks. Nice." Wrote Nagatha system prompt to misc/NAGATHA_SYSTEM_PROMPT.md for the Captain to paste into SkippyTel's Gemini config.
+
+**Key decisions made:**
+- zPhone PassthroughServer (100.122.32.113:47823) is the SUIP registration target, not skippy-pc
+- corrected_music/ = local primary; gdrive:Music/ = backup (Mac→Drive only, via rclone)
+- Single-track ingestion happens fully on Mac (no PC dispatch needed for one song)
+- Hot-reload endpoint /api/reload_collection so Bilby doesn't need restart after adding a track
+- Nagatha personality lives in the Gemini system prompt in SkippyTel (not in this repo)
+
+**Notable moments:**
+- suip_client._register() was checking resp.get("accepted") but PassthroughServer v2 returns {"ok":true} — silent failure that looked like a connection loop. Fixed by accepting either key.
+- python-dotenv not installed on system python → Flask showed "tip" but env vars never loaded. Fixed with explicit load_dotenv() call at stage9 startup + pip install.
+- reload_collection called load_tracks() with no args → fixed to load_tracks(TRAKTOR_NML)
+- Mac Bilby's first words: "yeah, loading the collection, one sec… 21,435 tracks. Nice."
+
+**Files modified:**
+- `stage9_dj_suggest.py` — Bilby name/vibe, drop zone HTML/CSS/JS, /api/add_track + /api/add_track_progress + /api/reload_collection, load_dotenv, STAGE9_HOST env
+- `tools/add_track.py` — NEW: full single-track ingestion pipeline
+- `tools/drive_intake.py` — BFS folder scoping, --find-folder, DRIVE_MUSIC_FOLDER_ID
+- `tools/suip_client.py` — accept ok/accepted from PassthroughServer
+- `Makefile` — NEW: convenience targets
+- `.env` — SKIPPY_URL fixed to zPhone, DRIVE_MUSIC_FOLDER_ID added
+- `misc/NAGATHA_SYSTEM_PROMPT.md` — NEW: Gemini system prompt for Nagatha personality
+
+---
