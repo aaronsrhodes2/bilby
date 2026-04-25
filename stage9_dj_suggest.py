@@ -1290,7 +1290,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DJ Block Planner</title>
+<title>Mac Bilby</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
@@ -1755,7 +1755,7 @@ body.passthrough #add-track-zone{display:none !important}
 <div id="toast"></div>
 <div id="lyr-tooltip"></div>
 <div id="hdr">
-  <h1>♪ DJ Block Planner</h1>
+  <h1>♪ Mac Bilby</h1>
   <small id="tc">loading…</small>
   <span id="osc-status" class="off">OSC OFF</span>
   <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg → Passthrough">🌙</button>
@@ -1816,7 +1816,7 @@ body.passthrough #add-track-zone{display:none !important}
 <div id="add-track-zone">
   <div id="add-track-inner">
     <span id="add-track-icon">🎵</span>
-    <span id="add-track-label">Drop a track to add it to the library — or click to browse</span>
+    <span id="add-track-label">Drop a track — Bilby will handle the whole thing</span>
     <input type="file" id="add-track-file" accept="audio/*" style="display:none">
   </div>
   <div id="add-track-status"></div>
@@ -2780,7 +2780,7 @@ ol li{display:grid;grid-template-columns:28px 44px 1fr 80px;align-items:baseline
 <div id="count"></div>
 <ol id="list"></ol>
 <div id="empty" style="display:none">Waiting for first track…</div>
-<div id="footer">localhost:7334/setlist · DJ Block Planner</div>
+<div id="footer">localhost:7334/setlist · Mac Bilby</div>
 <script>
 async function load(){
   const r=await fetch('/api/setlist');
@@ -3272,18 +3272,17 @@ def main():
     import logging
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-    print("DJ Block Planner — loading collection…", end=" ", flush=True)
+    print("Mac Bilby — yeah, loading the collection, one sec…", end=" ", flush=True)
     tracks = load_tracks(TRAKTOR_NML)
-    print(f"{len(tracks)} tracks ready.")
+    print(f"{len(tracks):,} tracks. Nice.")
 
     osc_state = OSCState()
     osc_on    = start_osc_server(osc_state, OSC_PORT)
 
     if osc_on:
-        print(f"  OSC listening on port {OSC_PORT} — Traktor auto-detect active.")
+        print(f"  OSC up on {OSC_PORT} — Traktor's in range, we're good.")
     else:
-        print(f"  OSC unavailable (port {OSC_PORT} in use or python-osc missing).")
-        print(f"  Running in manual search mode.")
+        print(f"  OSC not available on {OSC_PORT} — running manual mode, no biggie.")
 
     SUGGESTIONS_DIR.mkdir(exist_ok=True)
     print(f"\n  Browser:   http://localhost:{PORT}")
@@ -3352,12 +3351,12 @@ def main():
             _suip.start()
             import atexit
             atexit.register(_suip.stop)
-            print(f"  SUIP client → {skippy_url}")
-            print(f"  Manifest   → {manifest_url}")
+            print(f"  Streaming to SkippyTel → {skippy_url}")
+            print(f"  Manifest   → {manifest_url}  (zPhone can see us)")
         except Exception as ex:
             print(f"  SUIP client failed to start: {ex}")
     else:
-        print(f"  SUIP client disabled (set SKIPPY_URL=<skippy-base> to enable)")
+        print(f"  Running solo — set SKIPPY_URL to patch into SkippyTel.")
 
     run_key_listener()   # blocks main thread; x / Ctrl+C exits
 
