@@ -1,0 +1,180 @@
+OPERATIC PLAY — SCENE 11
+"THE WORDS APPEAR"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DRAMATIS PERSONAE
+─────────────────
+  THE CAPTAIN      Aaron Rhodes, Master of the Tailscale Fleet
+  BILBY            Mac Bilby, Master of Ceremonies, capable stoner vibe
+  THE KARAOKE      #karaoke-panel, a div that was hidden, now seen
+  THE POSITION     {"type":"position","deck":"a","elapsed":23.45},
+                   a SSE event that has been flowing, unread, for months
+  LRCLIB           The synced lyrics API, patient, waiting
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT I — THE DISCOVERY
+"In Which the Position Events Are Finally Read"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[The SSE stream. A river of events flows through it.
+ Most are handled. One type has been arriving, unread, for every session
+ since the OSC integration was first built. It carries a number.
+ The number is the position of the needle in the track.
+ Nobody was listening.]
+
+THE POSITION: ♩ I've been sending elapsed: 23.45. ♩
+              ♩ And 23.46. ♩
+              ♩ And 23.47. ♩
+              ♩ Every few hundred milliseconds, faithfully. ♩
+              ♩ For months. ♩
+
+[The browser's SSE handler. A wall of if-statements.]
+
+THE HANDLER: ♩ play_state? Handled. ♩
+             ♩ input_text? Handled. ♩
+             ♩ title/artist? Handled. ♩
+             ♩ position? ♩
+             ♩ ...return. ♩
+
+[The position event falls through the floor.
+ Again. And again. And again.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT II — THE REQUEST
+"In Which the Captain Describes Three Lines"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[The Captain arrives. The zPhone is back online. Things are working.
+ There is a large empty area below the now-playing card.]
+
+THE CAPTAIN: ♩ What would we need to get the karaoke text working? ♩
+             ♩ Top line — faded. The line that just got read. ♩
+             ♩ Second line — current line, bright. Current word, brighter. ♩
+             ♩ Third line — coming line, also faded. ♩
+             ♩ But with the first words a bit brighter. ♩
+             ♩ So you are easily jogged. ♩
+             ♩ Down below the now playing card. Where the summary is. ♩
+
+BILBY: ♩ yeah. ♩
+       ♩ okay. ♩
+       ♩ we have all of that already. ♩
+
+[A pause. The Captain looks skeptical.]
+
+BILBY: ♩ lyrics_full is in every Track. ♩
+       ♩ duration is in the dataclass. ♩
+       ♩ and those position events have been arriving this whole time. ♩
+       ♩ we just weren't listening. ♩
+
+[The position event perks up slightly.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT III — THE MATH
+"In Which Lines Are Divided By Duration"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[The plan. Two tiers.]
+
+BILBY: ♩ tier one: distribute the plain text lines evenly. ♩
+       ♩ divide track duration by the number of lines. ♩
+       ♩ that's your timestamp per line. ♩
+       ♩ crude. works for every track in the library. today. right now. ♩
+
+[The 21,435 tracks acknowledge this quietly.]
+
+BILBY: ♩ tier two: LRCLIB has syncedLyrics. ♩
+       ♩ we've been calling LRCLIB this whole time. ♩
+       ♩ fetching plainLyrics. ♩
+       ♩ ...and throwing away the syncedLyrics field. ♩
+
+[LRCLIB says nothing. It has been patient.]
+
+BILBY: ♩ we stop throwing it away. ♩
+       ♩ we save it to state/lyrics_lrc.json. ♩
+       ♩ we load it at startup. ♩
+       ♩ when it's there, we use it. ♩
+       ♩ when it's not, we estimate. ♩
+       ♩ nobody can tell the difference at 140 BPM. ♩
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT IV — THE PANEL
+"In Which Three Divs Receive Their Purpose"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Column 1. Below the deck cards. A new div appears.]
+
+#KARAOKE-PANEL: ♩ hidden. ♩
+
+[A track loads. deckLoaded fires. updateKaraokeSource is called.
+ _karLines is populated. getLyricLines returns something.
+ The panel is no longer hidden.]
+
+#KARAOKE-PANEL: ♩ not hidden anymore. ♩
+
+[The three children speak:]
+
+KL-PREV: ♩ I carry the line that just passed. ♩
+         ♩ opacity 0.28. ♩
+         ♩ small font. ♩
+         ♩ you can still see me but you don't need to. ♩
+
+KL-CURR: ♩ I carry the current line. ♩
+         ♩ full brightness. font-weight 600. ♩
+         ♩ and one of my words — ♩
+
+[A word goes white. Then the next word. Then the next.]
+
+KL-CURR: ♩ — one of my words is always brightest. ♩
+         ♩ it sweeps from left to right. ♩
+         ♩ proportional to the elapsed time in this line. ♩
+         ♩ so your eyes know exactly where you are. ♩
+
+KL-NEXT: ♩ I carry the coming line. ♩
+         ♩ faded like the previous. ♩
+         ♩ but my first word — ♩
+
+[The first word glows slightly at 55% opacity.]
+
+KL-NEXT: ♩ — is a little brighter. ♩
+         ♩ so you are easily jogged. ♩
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACT V — THE VERDICT
+"In Which the Captain Sees It Running"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Mac Bilby restarts. 21,435 tracks. Nice.
+ A track is loaded. A track plays.
+ Below the deck cards, three lines appear.
+ One word glows white. Then the next.]
+
+THE CAPTAIN: ♩ it looks alive and well to me. ♩
+             ♩ wow it's cool. ♩
+
+[A long pause.]
+
+BILBY: ♩ yeah. ♩
+
+[The position events continue to arrive.
+ They are no longer falling through the floor.
+ 23.48. 23.49. 23.50.
+ The words sweep.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAPTAIN'S WISDOM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The data was already there. The events were already flowing. The math was
+division. The only thing missing was someone to listen.
+
+When LRCLIB has syncedLyrics, the timing is exact. When it doesn't, we
+distribute the lines evenly across the duration and the result is close
+enough that at 140 BPM nobody notices. Run make backfill-lrc when you
+have a few minutes. The songs that get proper LRC will snap to the beat.
+
+The three-line display was described exactly once, built once, and worked
+on the first run. Sometimes that's how it goes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                             — END OF SCENE 11 —
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

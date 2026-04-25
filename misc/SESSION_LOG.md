@@ -576,3 +576,37 @@ SKIPPY: Renamed stage9 → Mac Bilby in title, header, and all startup messages.
 - `misc/NAGATHA_SYSTEM_PROMPT.md` — NEW: Gemini system prompt for Nagatha personality
 
 ---
+
+---
+
+## SESSION 13 — April 25, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: What would we need to get the karaoke text working? Previous line faded, current line bright with current word brighter, next line faded with first words slightly brighter. Put it below the now playing card where the summary is.
+
+SKIPPY: All the data's already there — lyrics_full in every Track, OSC elapsed_time arriving as SSE position events (ignored until now), track duration in the dataclass. Two-tier timing: distribute plain text lines evenly over duration as fallback (works for all 21k tracks today), upgrade to LRCLIB syncedLyrics when available. Built the whole thing.
+
+CAPTAIN: It looks alive and well to me. Wow it's cool.
+
+SKIPPY: yeah.
+
+**Key decisions made:**
+- Plain-text estimated timing as the baseline — no new data needed, works immediately for the whole library
+- LRC (syncedLyrics from LRCLIB) as the upgrade path, stored in state/lyrics_lrc.json
+- Position SSE events were already flowing; just needed a handler
+- Karaoke panel is static HTML in #b1, shown/hidden by JS; hidden in passthrough theme
+
+**Notable moments:**
+- The three-line display — faded prev, bright current with sweeping word highlight, faded next with first-word jog prompt — looked great on first run with just estimated timing
+- fetch_lyrics_lrclib() had been silently discarding the syncedLyrics field the entire time
+
+**Files modified:**
+- `stage9_dj_suggest.py` — Track.lyrics_lrc field, duration_ms in to_dict(), LRC_CACHE load, karaoke panel HTML/CSS/JS, position SSE handler, updateKaraokeSource() wired into deckPlayState/deckLoaded
+- `stage9_lyrics.py` — fetch_lyrics_lrclib() returns 3-tuple with lrc; run_fetch_lrclib() saves to lyrics_lrc.json; LYRICS_LRC path constant
+- `tools/add_track.py` — _fetch_lyrics() returns (text, lrc), saves LRC to cache on new track ingestion
+- `tools/backfill_lrc.py` — NEW: batch LRC backfill from LRCLIB, resume-safe, --limit N
+- `Makefile` — backfill-lrc target
+
+---
