@@ -1722,6 +1722,33 @@ body.passthrough .dc{padding:6px 8px}
 body.passthrough .dc .dc-label{font-size:9px}
 body.passthrough .dc .dc-name{font-size:11px}
 body.passthrough .dc .dc-meta{font-size:10px}
+/* ── Add-track drop zone (hidden in passthrough / phone view) ──────────── */
+body.passthrough #add-track-zone{display:none !important}
+#add-track-zone{
+  border:2px dashed var(--border,#2a2a2a);
+  border-radius:6px;
+  padding:8px 16px;
+  margin:4px 0 6px 0;
+  text-align:center;
+  cursor:pointer;
+  transition:background 0.15s,border-color 0.15s;
+  font-size:12px;
+  color:#555;
+  user-select:none;
+}
+#add-track-zone:hover,#add-track-zone.drag-over{
+  border-color:#4ade80;
+  color:#aaa;
+  background:rgba(74,222,128,0.04);
+}
+#add-track-icon{margin-right:6px}
+#add-track-status{
+  margin-top:4px;
+  font-size:11px;
+  color:#6ee7b7;
+  min-height:14px;
+}
+#add-track-status.error{color:#f87171}
 </style>
 </head>
 <body>
@@ -1785,6 +1812,14 @@ body.passthrough .dc .dc-meta{font-size:10px}
 <div id="search-wrap">
   <input id="q" type="text" placeholder="Manual search — artist or title…" autocomplete="off" spellcheck="false">
   <div id="results"></div>
+</div>
+<div id="add-track-zone">
+  <div id="add-track-inner">
+    <span id="add-track-icon">🎵</span>
+    <span id="add-track-label">Drop a track to add it to the library — or click to browse</span>
+    <input type="file" id="add-track-file" accept="audio/*" style="display:none">
+  </div>
+  <div id="add-track-status"></div>
 </div>
 <div id="cols">
   <div class="col" id="c1">
@@ -2644,6 +2679,71 @@ function renderSlot3(groups){
       ${lyricLine(t)}${meta(t,true)}</div>`}).join('')}</div>`).join('');
   fitPassthrough();
 }
+
+// ── Drop-zone: add a new track to the library ────────────────────────────────
+(function(){
+  const zone   = document.getElementById('add-track-zone');
+  const fileIn = document.getElementById('add-track-file');
+  const status = document.getElementById('add-track-status');
+  if(!zone) return;
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const f = e.dataTransfer && e.dataTransfer.files[0];
+    if(f) _uploadTrack(f);
+  });
+  zone.addEventListener('click', e => {
+    if(e.target !== fileIn) fileIn.click();
+  });
+  fileIn.addEventListener('change', e => {
+    if(e.target.files[0]) _uploadTrack(e.target.files[0]);
+    fileIn.value = '';
+  });
+
+  function _setStatus(msg, isError){
+    status.textContent = msg;
+    status.className = isError ? 'error' : '';
+  }
+
+  function _uploadTrack(file){
+    _setStatus('Uploading ' + file.name + '…');
+    const form = new FormData();
+    form.append('file', file);
+    fetch('/api/add_track', {method:'POST', body:form})
+      .then(r => r.json())
+      .then(d => {
+        if(d.job_id){
+          _streamProgress(d.job_id);
+        } else {
+          _setStatus('Error: ' + (d.error || 'unknown'), true);
+        }
+      })
+      .catch(err => _setStatus('Upload failed: ' + err, true));
+  }
+
+  function _streamProgress(jobId){
+    const es = new EventSource('/api/add_track_progress?id=' + jobId);
+    es.onmessage = e => {
+      try {
+        const d = JSON.parse(e.data);
+        _setStatus(d.msg, !d.ok && d.done);
+        if(d.done){
+          es.close();
+          if(d.ok){
+            setTimeout(() => {
+              _setStatus('');
+              // Nudge the server to reload its NML (best-effort)
+              fetch('/api/reload_collection', {method:'POST'}).catch(()=>{});
+            }, 2000);
+          }
+        }
+      } catch(_){}
+    };
+    es.onerror = () => { es.close(); _setStatus('Connection lost', true); };
+  }
+})();
 </script>
 </body>
 </html>"""
@@ -3084,6 +3184,84 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    # ── Drop-zone: add a new track to the library ─────────────────────────────
+    import uuid as _uuid
+    import tempfile as _tempfile
+    import threading as _threading
+    import queue as _queue_mod
+
+    _ADD_TRACK_JOBS: dict = {}
+
+    @app.route("/api/add_track", methods=["POST"])
+    def add_track_upload():
+        """Accept a dropped audio file and kick off the full ingestion pipeline."""
+        f = request.files.get("file")
+        if not f:
+            return jsonify(error="no file"), 400
+
+        suffix = Path(f.filename).suffix if f.filename else ".mp3"
+        job_id = str(_uuid.uuid4())[:8]
+        q: _queue_mod.Queue = _queue_mod.Queue()
+        _ADD_TRACK_JOBS[job_id] = q
+
+        # Save to temp file (Flask file object exhausted after save)
+        tmp = _tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        f.save(tmp.name)
+        tmp_path = Path(tmp.name)
+
+        def _run():
+            try:
+                sys.path.insert(0, str(BASE / "tools"))
+                from tools.add_track import add_track as _add_track
+                _add_track(tmp_path, progress_queue=q)
+            except Exception as ex:
+                q.put({"msg": f"Internal error: {ex}", "done": True, "ok": False})
+            finally:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+        _threading.Thread(target=_run, daemon=True, name="add-track").start()
+        return jsonify(job_id=job_id)
+
+    @app.route("/api/add_track_progress")
+    def add_track_progress():
+        """SSE stream for add_track job progress."""
+        job_id = request.args.get("id", "")
+        q = _ADD_TRACK_JOBS.get(job_id)
+        if not q:
+            return jsonify(error="unknown job"), 404
+
+        def _generate():
+            while True:
+                try:
+                    msg = q.get(timeout=30)
+                except _queue_mod.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("done"):
+                    _ADD_TRACK_JOBS.pop(job_id, None)
+                    break
+
+        return Response(
+            stream_with_context(_generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.route("/api/reload_collection", methods=["POST"])
+    def reload_collection():
+        """Hot-reload the track collection from NML (called after add_track completes)."""
+        try:
+            new_tracks = load_tracks(TRAKTOR_NML)
+            tracks.clear()
+            tracks.extend(new_tracks)
+            return jsonify(ok=True, count=len(tracks))
+        except Exception as e:
+            return jsonify(ok=False, error=str(e)), 500
 
     return app
 

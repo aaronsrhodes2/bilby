@@ -2,13 +2,8 @@
 """
 tools/drive_intake.py — Google Drive music intake pipeline.
 
-Scans Google Drive for audio files not yet in the library, downloads them,
+Scans My Drive/Music/ for audio files not yet in the library, downloads them,
 and runs them through the lyrics pipeline (fetch → summarize → export).
-
-Useful for:
-  • Artist-shared tracks (e.g. Faderhead sharing MP3s directly to your Drive)
-  • Files you upload to Drive from a phone / secondary machine
-  • Any audio that lands in Drive before it reaches the local collection
 
 ─────────────────────────────────────────────────────────────────────────────
 FIRST-TIME SETUP
@@ -21,11 +16,14 @@ FIRST-TIME SETUP
 5. Download the JSON → save as  state/drive_credentials.json
 6. Run:  python tools/drive_intake.py --setup
    (Opens browser for one-time consent; saves token to state/drive_token.json)
+7. Run:  python tools/drive_intake.py --find-folder
+   Copy the printed folder ID → set DRIVE_MUSIC_FOLDER_ID in .env
 
 ─────────────────────────────────────────────────────────────────────────────
 USAGE
 ─────────────────────────────────────────────────────────────────────────────
 
+  python tools/drive_intake.py --find-folder       # find Music/ folder ID
   python tools/drive_intake.py --scan              # list new audio in Drive
   python tools/drive_intake.py --intake            # download + add to library
   python tools/drive_intake.py --intake --process  # also fetch lyrics & summarize
@@ -43,6 +41,12 @@ import time
 import threading
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env", override=False)
+except ImportError:
+    pass
+
 BASE      = Path(__file__).parent.parent
 STATE_DIR = BASE / "state"
 CREDS_FILE  = STATE_DIR / "drive_credentials.json"
@@ -51,10 +55,17 @@ KNOWN_FILE  = STATE_DIR / "drive_known.json"   # Drive file IDs already processe
 TRACKLIST   = STATE_DIR / "tracklist.json"
 LYRICS_RAW  = STATE_DIR / "lyrics_raw.json"
 
-# Local music root — artist subdirs live here
-MUSIC_ROOT = Path("D:/Aaron/Music/VERAS SONGS")
+# ── Music root ────────────────────────────────────────────────────────────────
+# On Mac: corrected_music/ in the project. On PC: D:/Aaron/Music/VERAS SONGS
+# Override via MUSIC_ROOT env var.
+MUSIC_ROOT = Path(os.environ.get("MUSIC_ROOT", str(BASE / "corrected_music")))
 
-AUDIO_MIME_TYPES = [
+# ── Google Drive folder scope ─────────────────────────────────────────────────
+# ID of the My Drive/Music/ folder. Set via DRIVE_MUSIC_FOLDER_ID in .env.
+# Run --find-folder once to discover it, then add to .env.
+DRIVE_MUSIC_FOLDER_ID = os.environ.get("DRIVE_MUSIC_FOLDER_ID", "").strip()
+
+AUDIO_MIME_TYPES = {
     "audio/mpeg",           # MP3
     "audio/flac",           # FLAC
     "audio/x-flac",
@@ -63,7 +74,7 @@ AUDIO_MIME_TYPES = [
     "audio/x-aiff",
     "audio/mp4",            # M4A
     "audio/ogg",            # OGG
-]
+}
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
@@ -100,27 +111,72 @@ def get_drive_service():
 
 # ── Drive helpers ─────────────────────────────────────────────────────────────
 
-def list_audio_files(service) -> list[dict]:
-    """Return all audio files in Drive (owned + shared with user)."""
-    mime_query = " or ".join(f"mimeType = '{m}'" for m in AUDIO_MIME_TYPES)
-    query      = f"({mime_query}) and trashed = false"
+def find_music_folder_id(service) -> str | None:
+    """Return the Drive folder ID for 'Music' at the My Drive root."""
+    resp = service.files().list(
+        q="name='Music' and mimeType='application/vnd.google-apps.folder' "
+          "and 'root' in parents and trashed=false",
+        fields="files(id, name)",
+        pageSize=10,
+    ).execute()
+    files = resp.get("files", [])
+    return files[0]["id"] if files else None
 
-    files  = []
-    token  = None
-    while True:
-        resp = service.files().list(
-            q=query,
-            pageSize=200,
-            fields="nextPageToken, files(id, name, size, owners, sharedWithMeTime, modifiedTime, mimeType)",
-            pageToken=token,
-        ).execute()
-        files.extend(resp.get("files", []))
-        token = resp.get("nextPageToken")
-        if not token:
-            break
 
-    # Filter out tiny files (test fixtures, placeholders)
-    return [f for f in files if int(f.get("size", 0)) >= MIN_AUDIO_BYTES]
+def list_audio_files(service, folder_id: str = "") -> list[dict]:
+    """
+    Return audio files under folder_id (BFS recursion).
+    If folder_id is empty, scans all of Drive (legacy behaviour).
+    """
+    if not folder_id:
+        # Legacy: flat scan of entire Drive
+        mime_query = " or ".join(f"mimeType = '{m}'" for m in AUDIO_MIME_TYPES)
+        query      = f"({mime_query}) and trashed = false"
+        files  = []
+        token  = None
+        while True:
+            resp = service.files().list(
+                q=query,
+                pageSize=200,
+                fields="nextPageToken, files(id, name, size, owners, sharedWithMeTime, modifiedTime, mimeType)",
+                pageToken=token,
+            ).execute()
+            files.extend(resp.get("files", []))
+            token = resp.get("nextPageToken")
+            if not token:
+                break
+        return [f for f in files if int(f.get("size", 0)) >= MIN_AUDIO_BYTES]
+
+    # Scoped BFS: traverse folder tree rooted at folder_id
+    results: list[dict] = []
+    queue = [folder_id]
+    visited: set[str] = set()
+
+    while queue:
+        fid = queue.pop(0)
+        if fid in visited:
+            continue
+        visited.add(fid)
+
+        page_token = None
+        while True:
+            resp = service.files().list(
+                q=f"'{fid}' in parents and trashed=false",
+                fields="nextPageToken, files(id,name,size,mimeType,owners,modifiedTime)",
+                pageSize=200,
+                pageToken=page_token,
+            ).execute()
+            for f in resp.get("files", []):
+                if f["mimeType"] == "application/vnd.google-apps.folder":
+                    queue.append(f["id"])
+                elif f["mimeType"] in AUDIO_MIME_TYPES:
+                    if int(f.get("size", 0)) >= MIN_AUDIO_BYTES:
+                        results.append(f)
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
+    return results
 
 
 def download_file(service, file_id: str, dest_path: Path) -> bool:
@@ -188,14 +244,33 @@ def save_tracklist(tracks: list[dict]) -> None:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
+def cmd_find_folder(service) -> None:
+    """Look up and print the Music/ folder ID."""
+    fid = find_music_folder_id(service)
+    if fid:
+        print(f"Found Music/ folder:  {fid}")
+        print(f"\nAdd to .env:")
+        print(f"  DRIVE_MUSIC_FOLDER_ID={fid}")
+    else:
+        print("Could not find a folder named 'Music' at the root of My Drive.")
+        print("Make sure the folder exists and is owned by your account.")
+
+
 def cmd_scan(service) -> None:
-    """List all audio files in Drive, flagging which are new to the library."""
+    """List all audio files in Drive's Music/ folder, flagging which are new."""
+    folder_id = DRIVE_MUSIC_FOLDER_ID
+    if not folder_id:
+        print("WARN: DRIVE_MUSIC_FOLDER_ID not set — scanning all of Drive.")
+        print("Run: python tools/drive_intake.py --find-folder")
+        print()
+
     known      = load_known()
     tracklist  = load_tracklist()
     known_dkeys = {t["dkey"] for t in tracklist}
 
-    files = list_audio_files(service)
-    print(f"Found {len(files)} audio files in Drive\n")
+    files = list_audio_files(service, folder_id)
+    scope_label = f"My Drive/Music/ (folder {folder_id})" if folder_id else "all of Drive"
+    print(f"Found {len(files)} audio files in {scope_label}\n")
 
     new_count = 0
     for f in sorted(files, key=lambda x: x.get("modifiedTime", ""), reverse=True):
@@ -217,11 +292,16 @@ def cmd_scan(service) -> None:
 
 def cmd_intake(service, process: bool = False) -> None:
     """Download new Drive audio files and add them to the library."""
+    folder_id = DRIVE_MUSIC_FOLDER_ID
+    if not folder_id:
+        print("WARN: DRIVE_MUSIC_FOLDER_ID not set — scanning all of Drive.")
+        print()
+
     known     = load_known()
     tracklist = load_tracklist()
     known_dkeys = {t["dkey"] for t in tracklist}
 
-    files = list_audio_files(service)
+    files = list_audio_files(service, folder_id)
     new_files = [f for f in files if f["id"] not in known]
 
     print(f"Drive audio files: {len(files)} total, {len(new_files)} not yet downloaded\n")
@@ -287,13 +367,14 @@ def cmd_intake(service, process: bool = False) -> None:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Google Drive music intake pipeline")
-    parser.add_argument("--setup",   action="store_true", help="Run OAuth setup flow")
-    parser.add_argument("--scan",    action="store_true", help="List audio files in Drive")
-    parser.add_argument("--intake",  action="store_true", help="Download new files to library")
-    parser.add_argument("--process", action="store_true", help="Also run lyrics pipeline after intake")
+    parser.add_argument("--setup",       action="store_true", help="Run OAuth setup flow")
+    parser.add_argument("--find-folder", action="store_true", help="Find and print My Drive/Music/ folder ID")
+    parser.add_argument("--scan",        action="store_true", help="List audio files in Drive")
+    parser.add_argument("--intake",      action="store_true", help="Download new files to library")
+    parser.add_argument("--process",     action="store_true", help="Also run lyrics pipeline after intake")
     args = parser.parse_args()
 
-    if not any([args.setup, args.scan, args.intake]):
+    if not any([args.setup, args.find_folder, args.scan, args.intake]):
         parser.print_help()
         sys.exit(0)
 
@@ -301,7 +382,9 @@ def main() -> None:
     service = get_drive_service()
     print("Connected.\n")
 
-    if args.scan:
+    if args.find_folder:
+        cmd_find_folder(service)
+    elif args.scan:
         cmd_scan(service)
     elif args.intake:
         cmd_intake(service, process=args.process)
