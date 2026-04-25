@@ -291,7 +291,8 @@ class SUIPClient:
             "palette":          list(PALETTE_ENUM_NAMES),
         }
         resp = self._post("register", body)
-        return bool(resp and resp.get("accepted"))
+        # PassthroughServer v2+ returns {"ok": true, ...}; older spec used "accepted"
+        return bool(resp and (resp.get("ok") or resp.get("accepted")))
 
     def _send_scene_full(self) -> None:
         state = self.state_of()

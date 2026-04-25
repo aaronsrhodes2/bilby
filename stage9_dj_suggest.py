@@ -46,6 +46,13 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Load .env before anything else (python-dotenv optional but recommended)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass  # Flask/Werkzeug will show a tip; env vars already set externally work fine
+
 sys.path.insert(0, str(Path(__file__).parent))
 from lib.nml_parser import traktor_to_abs
 
