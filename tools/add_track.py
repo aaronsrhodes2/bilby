@@ -439,24 +439,33 @@ def _apply_cues(dest: Path, cue_data: dict, dry_run: bool) -> None:
 
 # ── Lyrics ────────────────────────────────────────────────────────────────────
 
-def _fetch_lyrics(artist: str, title: str) -> str | None:
-    """Try lyrics.ovh → lrclib → genius. Returns text or None."""
-    from stage9_lyrics import fetch_lyrics, fetch_lyrics_lrclib, fetch_lyrics_genius
+def _fetch_lyrics(artist: str, title: str) -> tuple[str | None, str | None]:
+    """Try lyrics.ovh → lrclib → genius. Returns (plain_text, lrc_string)."""
+    from stage9_lyrics import fetch_lyrics, fetch_lyrics_lrclib, fetch_lyrics_genius, LYRICS_LRC
 
-    # lyrics.ovh
+    # lyrics.ovh (no LRC available from this source)
     text = fetch_lyrics(artist, title)
     if text:
-        return text
+        return text, None
 
-    # lrclib
-    text, is_instrumental = fetch_lyrics_lrclib(artist, title)
+    # lrclib — also saves syncedLyrics LRC if available
+    text, is_instrumental, lrc = fetch_lyrics_lrclib(artist, title)
+    if lrc:
+        # Persist LRC to the cache file so Bilby can serve it
+        dk = f"{artist.lower().strip()}\t{title.lower().strip()}"
+        try:
+            cache: dict = json.loads(LYRICS_LRC.read_text(encoding="utf-8")) if LYRICS_LRC.exists() else {}
+            cache[dk] = lrc
+            LYRICS_LRC.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
     if is_instrumental:
-        return None  # It's an instrumental; don't keep trying
+        return None, None
     if text:
-        return text
+        return text, lrc
 
-    # genius (slow, last resort)
-    return fetch_lyrics_genius(artist, title)
+    # genius (slow, last resort — no LRC)
+    return fetch_lyrics_genius(artist, title), None
 
 
 def _summarize(artist: str, title: str, lyrics: str) -> dict:
@@ -668,9 +677,11 @@ def add_track(src: Path, no_cues: bool = False, no_upload: bool = False,
 
         # ── 6. Fetch lyrics ────────────────────────────────────────────────────
         p(f"Fetching lyrics for {artist} — {title}…")
-        lyrics = _fetch_lyrics(artist, title)
+        lyrics, lrc = _fetch_lyrics(artist, title)
         if lyrics:
             p(f"  Lyrics found ({len(lyrics):,} chars)")
+            if lrc:
+                p(f"  Synced LRC found ({len(lrc):,} chars)")
         else:
             p("  No lyrics found")
 

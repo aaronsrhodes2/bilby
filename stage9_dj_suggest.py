@@ -106,6 +106,7 @@ class Track:
     lyric_theme: str        = ""    # NML INFO COMMENT2 — first pipe segment (theme)
     lyric_flags: list       = field(default_factory=list)  # COMMENT2 — ⚑-prefixed flag tokens
     lyrics_full: str        = ""    # NML INFO KEY_LYRICS — full lyrics text (write_nml_lyrics.py)
+    lyrics_lrc:  str        = ""    # LRC timestamped lyrics from state/lyrics_lrc.json (if available)
     art_url:     str        = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
 
     @property
@@ -138,6 +139,8 @@ class Track:
             "lyric_theme":   lyric_theme,
             "lyric_flags":   self.lyric_flags,
             "lyrics_full":   self.lyrics_full or None,
+            "lyrics_lrc":    self.lyrics_lrc  or None,
+            "duration_ms":   round(self.duration * 1000),
             "art_url":       self.art_url or "",
             "is_instrumental": is_instrumental(self.title, lyric_theme, lyric_summary),
         }
@@ -219,6 +222,22 @@ def _load_art_index(path: Path) -> dict:
 ART_INDEX: dict[str, str] = _load_art_index(ART_INDEX_PATH)  # dkey → "/art/{hash}.jpg" | null
 
 
+# ── LRC (timestamped lyrics) cache ───────────────────────────────────────────
+
+LRC_CACHE_PATH = BASE / "state" / "lyrics_lrc.json"
+
+def _load_lrc_cache(path: Path) -> dict[str, str]:
+    """Load artist\ttitle → LRC string mapping. Returns {} if file absent."""
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+LRC_CACHE: dict[str, str] = _load_lrc_cache(LRC_CACHE_PATH)
+
+
 # ── Song key (used for dedup everywhere) ─────────────────────────────────────
 
 def _song_key(t: Track) -> str:
@@ -260,6 +279,7 @@ def load_tracks(nml_path: Path) -> list[Track]:
             duration = 0.0
         dk      = f"{artist.lower().strip()}\t{title.lower().strip()}"
         art_url = ART_INDEX.get(dk) or ""
+        lrc     = LRC_CACHE.get(dk) or ""
 
         # ── Parse COMMENT2 → theme + lyric_flags ──────────────────────────────
         # Format written by write_nml_comments.py:
@@ -294,6 +314,7 @@ def load_tracks(nml_path: Path) -> list[Track]:
             lyric_theme = lyric_theme,
             lyric_flags = lyric_flags,
             lyrics_full = info.get("KEY_LYRICS", "") or "",
+            lyrics_lrc  = lrc,
             art_url     = art_url,
         )))
 
@@ -1556,6 +1577,14 @@ body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!i
 .bg-dest{font-size:10px;color:var(--col3);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;padding-left:6px;border-left:2px solid var(--col3)}
 .empty{color:var(--text3);padding:16px;font-size:12px;text-align:center;line-height:1.8}
 .deck-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+#karaoke-panel{padding:12px 10px 4px;text-align:center;border-top:1px solid var(--border);margin-top:10px}
+.kl{padding:2px 0;line-height:1.55;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.kl-prev{font-size:11px;color:var(--text);opacity:0.28}
+.kl-curr{font-size:14px;color:var(--text);font-weight:600;letter-spacing:0.01em}
+.kl-next{font-size:11px;color:var(--text);opacity:0.28}
+.kl-word-hi{color:#fff;opacity:1!important}
+.kl-word-lead{opacity:0.55!important}
+body.passthrough #karaoke-panel{display:none!important}
 .dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--card-bg);transition:border-color .15s}
 .dc:hover{border-color:var(--border2);background:var(--bg4)}
 .dc.dc-idle{border-color:var(--border);color:var(--text3)}
@@ -1824,7 +1853,14 @@ body.passthrough #add-track-zone{display:none !important}
 <div id="cols">
   <div class="col" id="c1">
     <div class="col-hdr">① Selected Song</div>
-    <div class="col-body" id="b1"><div class="empty">Load a track in Traktor<br>— or search above.</div></div>
+    <div class="col-body" id="b1">
+      <div class="empty">Load a track in Traktor<br>— or search above.</div>
+      <div id="karaoke-panel" hidden>
+        <div class="kl kl-prev" id="kl-prev"></div>
+        <div class="kl kl-curr" id="kl-curr"></div>
+        <div class="kl kl-next" id="kl-next"></div>
+      </div>
+    </div>
   </div>
   <div class="col" id="c2">
     <div class="col-hdr">② Play Next — Lock</div>
@@ -2430,6 +2466,10 @@ function connectSSE(){
     }
     if(d.type==='play_state'){deckPlayState(d.deck,d.playing);return}
     if(d.type==='input_text'){injectInputText(d.text);return}
+    if(d.type==='position'){
+      if(_karLines&&_karDeck===d.deck) renderKaraoke(_karLines,d.elapsed*1000);
+      return;
+    }
     if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist,d.type==='playing');
   };
   es.onerror=()=>{
@@ -2473,6 +2513,7 @@ function deckPlayState(deck,playing){
     if(pill.className.includes('playing')) pill.className=deckTracks[deck]?'deck-pill loaded':'deck-pill';
   }
   renderDeckCards();
+  updateKaraokeSource();
 }
 
 async function deckLoaded(deck,title,artist,isPlaying=false){
@@ -2483,6 +2524,7 @@ async function deckLoaded(deck,title,artist,isPlaying=false){
   const r=await fetch(`/api/resolve-deck?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`).then(r=>r.json());
   deckTracks[deck]=r||{artist,title,bpm:'?',key:'',genre:'',stars:0,path:''};
   renderDeckCards();
+  updateKaraokeSource();
 
   if(r){
     SR=[r];
@@ -2497,6 +2539,84 @@ async function deckLoaded(deck,title,artist,isPlaying=false){
     b2.innerHTML='<div class="empty">—</div>';
     b3.innerHTML='<div class="empty">—</div>';
   }
+}
+
+// ── Karaoke lyrics display ─────────────────────────────────────────────────
+let _karLines=null;   // [{ms,text}] for playing track, or null
+let _karDeck=null;    // 'a'|'b'|null
+
+function parseLRC(lrc){
+  const lines=[];
+  for(const l of lrc.split('\n')){
+    const m=l.match(/^\[(\d+):(\d+\.\d+)\](.*)/);
+    if(m){
+      const ms=(parseInt(m[1])*60+parseFloat(m[2]))*1000;
+      const text=m[3].trim();
+      if(text) lines.push({ms,text});
+    }
+  }
+  return lines;
+}
+
+function estimateLines(plainText,durationMs){
+  const lines=(plainText||'').split('\n').filter(l=>l.trim());
+  if(!lines.length||!durationMs) return null;
+  const step=durationMs/lines.length;
+  return lines.map((text,i)=>({ms:i*step,text}));
+}
+
+function getLyricLines(track){
+  if(track&&track.lyrics_lrc)  return parseLRC(track.lyrics_lrc);
+  if(track&&track.lyrics_full) return estimateLines(track.lyrics_full,track.duration_ms);
+  return null;
+}
+
+function updateKaraokeSource(){
+  const deck=deckPlaying.a?'a':deckPlaying.b?'b':null;
+  const panel=document.getElementById('karaoke-panel');
+  if(!deck||!deckTracks[deck]){
+    panel.hidden=true; _karLines=null; _karDeck=null; return;
+  }
+  if(deck===_karDeck) return;  // already tracking this deck
+  _karDeck=deck;
+  _karLines=getLyricLines(deckTracks[deck]);
+  panel.hidden=!_karLines;
+  if(_karLines) renderKaraoke(_karLines,0);
+}
+
+function renderKaraoke(lines,elapsedMs){
+  // Find current line: last line whose start time ≤ elapsed
+  let idx=0;
+  for(let i=0;i<lines.length;i++){
+    if(lines[i].ms<=elapsedMs) idx=i; else break;
+  }
+
+  // Previous line
+  const prevText=idx>0?lines[idx-1].text:'';
+
+  // Current line — sweep active word
+  const curr=lines[idx];
+  const next=lines[idx+1]||null;
+  const lineEnd=next?next.ms:elapsedMs+5000;
+  const words=curr.text.split(' ');
+  const pct=Math.min((elapsedMs-curr.ms)/Math.max(lineEnd-curr.ms,1),1);
+  const wi=Math.min(Math.floor(pct*words.length),words.length-1);
+  const currHtml=words.map((w,i)=>
+    i===wi?`<span class="kl-word-hi">${esc(w)}</span>`:esc(w)
+  ).join(' ');
+
+  // Next line — first word as jog prompt
+  let nextHtml='';
+  if(next){
+    const nw=next.text.split(' ');
+    nextHtml=nw.map((w,i)=>
+      i===0?`<span class="kl-word-lead">${esc(w)}</span>`:esc(w)
+    ).join(' ');
+  }
+
+  document.getElementById('kl-prev').textContent=prevText;
+  document.getElementById('kl-curr').innerHTML=currHtml;
+  document.getElementById('kl-next').innerHTML=nextHtml;
 }
 
 // ── Manual search ───────────────────────────────────────────────────────────

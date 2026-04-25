@@ -48,6 +48,7 @@ from lib.nml_parser import traktor_to_abs
 BASE          = Path(__file__).parent
 STATE_DIR     = BASE / "state"
 LYRICS_RAW    = STATE_DIR / "lyrics_raw.json"       # {path: lyrics_text | null}
+LYRICS_LRC    = STATE_DIR / "lyrics_lrc.json"       # {"artist\ttitle": lrc_string | null}
 LYRICS_INDEX  = STATE_DIR / "lyrics_index.json"     # {path: {summary, flags, error}}
 LYRICS_DEDUP  = STATE_DIR / "lyrics_dedup.json"     # {"artist\ttitle_base": {summary, flags}}
 ACTIVITY_FILE = STATE_DIR / "activity.json"         # live progress for server UI
@@ -179,10 +180,11 @@ def fetch_lyrics(artist: str, title: str) -> str | None:
 
 LRCLIB_URL = "https://lrclib.net/api/get"
 
-def fetch_lyrics_lrclib(artist: str, title: str) -> tuple[str | None, bool]:
+def fetch_lyrics_lrclib(artist: str, title: str) -> tuple[str | None, bool, str | None]:
     """
-    Fetch from lrclib.net. Returns (lyrics_text, is_instrumental).
-    lyrics_text is None if not found or instrumental.
+    Fetch from lrclib.net.
+    Returns (lyrics_text, is_instrumental, lrc_string).
+    lrc_string is the raw syncedLyrics LRC data if available, else None.
     """
     params = f"artist_name={quote(artist)}&track_name={quote(title)}"
     req = Request(
@@ -193,27 +195,29 @@ def fetch_lyrics_lrclib(artist: str, title: str) -> tuple[str | None, bool]:
         with urlopen(req, timeout=8) as r:
             data = json.loads(r.read())
         if data.get("instrumental"):
-            return None, True
+            return None, True, None
         lyrics = (data.get("plainLyrics") or "").strip()
-        return (lyrics if lyrics else None), False
+        lrc    = (data.get("syncedLyrics") or "").strip() or None
+        return (lyrics if lyrics else None), False, lrc
     except HTTPError as e:
         if e.code == 404:
-            return None, False
+            return None, False, None
         if e.code == 429:
             time.sleep(3)
             return fetch_lyrics_lrclib(artist, title)
-        return None, False
+        return None, False, None
     except (URLError, Exception):
-        return None, False
+        return None, False, None
 
 
 def run_fetch_lrclib(tracks: list[dict], limit: int = 0) -> None:
-    """Fetch from LRCLIB for tracks that lyrics.ovh missed."""
+    """Fetch from LRCLIB for tracks that lyrics.ovh missed. Also saves syncedLyrics LRC."""
     if not LYRICS_RAW.exists():
         print("No lyrics_raw.json — run --fetch first.")
         return
 
     raw: dict = json.loads(LYRICS_RAW.read_text(encoding="utf-8"))
+    lrc_cache: dict = json.loads(LYRICS_LRC.read_text(encoding="utf-8")) if LYRICS_LRC.exists() else {}
 
     # Only target tracks lyrics.ovh returned null for (not yet found)
     todo = [t for t in tracks
@@ -229,13 +233,14 @@ def run_fetch_lrclib(tracks: list[dict], limit: int = 0) -> None:
         return
 
     FETCH_WORKERS = 16
-    found = not_found = instr_found = done_count = 0
+    found = not_found = instr_found = lrc_found = done_count = 0
     start = time.time()
     lock  = threading.Lock()
 
     def fetch_one(track):
-        nonlocal found, not_found, instr_found, done_count
-        lyrics, is_instr = fetch_lyrics_lrclib(track["artist"], track["title"])
+        nonlocal found, not_found, instr_found, lrc_found, done_count
+        lyrics, is_instr, lrc = fetch_lyrics_lrclib(track["artist"], track["title"])
+        dk = f"{track['artist'].lower().strip()}\t{track['title'].lower().strip()}"
         with lock:
             if is_instr:
                 raw[track["path"]] = None   # confirmed instrumental
@@ -245,24 +250,31 @@ def run_fetch_lrclib(tracks: list[dict], limit: int = 0) -> None:
                 found += 1
             else:
                 not_found += 1
+            if lrc:
+                lrc_cache[dk] = lrc
+                lrc_found += 1
             done_count += 1
             if done_count % 100 == 0 or done_count == len(todo):
                 LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+                LYRICS_LRC.write_text(json.dumps(lrc_cache, ensure_ascii=False), encoding="utf-8")
                 elapsed = time.time() - start
                 rate    = done_count / max(elapsed, 0.1)
                 remain  = (len(todo) - done_count) / rate / 60 if rate else 0
                 write_activity("Lyrics indexer", "lrclib", done_count, len(todo), start, rate)
                 print(f"  {done_count:,}/{len(todo):,} — filled {found:,}, "
-                      f"instr {instr_found:,}, still missing {not_found:,} — ~{remain:.0f} min left")
+                      f"lrc {lrc_found:,}, instr {instr_found:,}, "
+                      f"still missing {not_found:,} — ~{remain:.0f} min left")
 
     print(f"  Workers:         {FETCH_WORKERS}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=FETCH_WORKERS) as ex:
         list(ex.map(fetch_one, todo))
 
     LYRICS_RAW.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    LYRICS_LRC.write_text(json.dumps(lrc_cache, ensure_ascii=False), encoding="utf-8")
     elapsed = time.time() - start
     print(f"\nLRCLIB fetch complete in {elapsed/60:.1f} min")
     print(f"  Newly filled:    {found:,}")
+    print(f"  LRC synced:      {lrc_found:,}")
     print(f"  Confirmed instr: {instr_found:,}")
     print(f"  Still missing:   {not_found:,}")
 

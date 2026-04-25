@@ -4,7 +4,7 @@
 TRACK   ?=
 LIMIT   ?=
 
-.PHONY: add sync-up intake drive-folder-id stage9 help
+.PHONY: add sync-up intake drive-folder-id backfill-lrc stage9 help
 
 ## ── Track ingestion ──────────────────────────────────────────────────────────
 
@@ -35,6 +35,14 @@ intake:
 ## Find + print the My Drive/Music/ folder ID (run once, then set in .env)
 drive-folder-id:
 	python3 tools/drive_intake.py --find-folder
+
+## ── Karaoke / LRC ───────────────────────────────────────────────────────────
+
+## Backfill syncedLyrics LRC from LRCLIB for all tracks missing LRC data
+##   make backfill-lrc          (all tracks)
+##   make backfill-lrc LIMIT=500 (first 500)
+backfill-lrc:
+	python3 tools/backfill_lrc.py --limit $(LIMIT)
 
 ## ── Stage9 / Mac Bilby ───────────────────────────────────────────────────────
 
