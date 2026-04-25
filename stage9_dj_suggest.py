@@ -3094,6 +3094,77 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
             "playing_b": playing.get("b", False),
         })
 
+    # ── SkippyTel / Bilby service endpoints ──────────────────────────────────
+    # SkippyTel (skippy-pc) knows about Mac Bilby via base_url in its service
+    # manifest. These routes let SkippyTel probe availability and let the zPhone
+    # query now-playing state and request track changes via voice commands.
+
+    @app.route("/bilby/status")
+    def bilby_status():
+        """Now-playing state. SkippyTel probes this to detect Mac online/offline."""
+        deck    = osc_state.playing_deck()
+        loaded  = osc_state.get_loaded()
+        playing = osc_state.get_playing()
+        host    = request.host  # e.g. skippy-mac:7334
+
+        now = None
+        if deck and loaded.get(deck):
+            info  = loaded[deck]
+            # Enrich with full Track data if we can find it in the index
+            title_q  = (info.get("title",  "") or "").lower()
+            artist_q = (info.get("artist", "") or "").lower()
+            t = next((tr for tr in tracks
+                      if title_q in tr.title.lower() and artist_q in tr.artist.lower()), None)
+            elapsed   = osc_state.get_elapsed(deck)
+            now = {
+                "deck":          deck,
+                "artist":        info.get("artist", ""),
+                "title":         info.get("title", ""),
+                "bpm":           round(t.bpm, 1) if t else None,
+                "key":           t.key if t else None,
+                "genre":         t.genre if t else None,
+                "duration_s":    t.duration if t else None,
+                "elapsed_s":     round(elapsed, 2),
+                "lyric_summary": t.comment if t else None,
+                "art_url":       (f"http://{host}{t.art_url}" if t and t.art_url else None),
+            }
+
+        return jsonify({
+            "spec_version": "1",
+            "mode":         "traktor",
+            "online":       True,
+            "now_playing":  now,
+            "deck_a":       loaded.get("a"),
+            "deck_b":       loaded.get("b"),
+            "playing_a":    playing.get("a", False),
+            "playing_b":    playing.get("b", False),
+        })
+
+    @app.route("/bilby/next", methods=["POST", "GET"])
+    def bilby_next():
+        """Voice command: 'next track' / 'bilby next'. Returns top slot2 suggestion."""
+        with _SUGG_LOCK:
+            s2 = list(_SUGG_STATE.get("slot2", []))
+        if not s2:
+            return jsonify({"spec_version": "1", "ok": False,
+                            "message": "No suggestions ready — load a track first."})
+        top = s2[0]
+        return jsonify({
+            "spec_version": "1",
+            "ok":      True,
+            "message": f"Up next: {top.get('artist','?')} — {top.get('title','?')}",
+            "track":   top,
+        })
+
+    @app.route("/bilby/stop", methods=["POST", "GET"])
+    def bilby_stop():
+        """Voice command: 'stop music'. Acknowledged — Traktor OSC control is future work."""
+        return jsonify({
+            "spec_version": "1",
+            "ok":      True,
+            "message": "Stop acknowledged — control Traktor directly to halt playback.",
+        })
+
     @app.route("/api/search")
     def search():
         q = request.args.get("q", "").lower().strip()
@@ -3476,7 +3547,7 @@ def main():
         except Exception as ex:
             print(f"  SUIP client failed to start: {ex}")
     else:
-        print(f"  Running solo — set SKIPPY_URL to patch into SkippyTel.")
+        print(f"  SkippyTel: /bilby/status ready — add 'skippy-mac' → 100.93.161.25 on PC hosts.")
 
     run_key_listener()   # blocks main thread; x / Ctrl+C exits
 
