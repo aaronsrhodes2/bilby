@@ -106,6 +106,7 @@ class Track:
     lyric_theme: str        = ""    # NML INFO COMMENT2 — first pipe segment (theme)
     lyric_flags: list       = field(default_factory=list)  # COMMENT2 — ⚑-prefixed flag tokens
     lyrics_full: str        = ""    # NML INFO KEY_LYRICS — full lyrics text (write_nml_lyrics.py)
+    lyrics_plain: str       = ""    # LRCLIB plain lyrics from state/lyrics_raw.json (multi-line)
     lyrics_lrc:  str        = ""    # LRC timestamped lyrics from state/lyrics_lrc.json (if available)
     art_url:     str        = ""    # "/art/{hash}.jpg" from album_art_index.json, or ""
 
@@ -138,8 +139,9 @@ class Track:
             "lyric_summary": lyric_summary,
             "lyric_theme":   lyric_theme,
             "lyric_flags":   self.lyric_flags,
-            "lyrics_full":   self.lyrics_full or None,
-            "lyrics_lrc":    self.lyrics_lrc  or None,
+            "lyrics_full":   self.lyrics_full  or None,
+            "lyrics_plain":  self.lyrics_plain or None,
+            "lyrics_lrc":    self.lyrics_lrc   or None,
             "duration_ms":   round(self.duration * 1000),
             "art_url":       self.art_url or "",
             "is_instrumental": is_instrumental(self.title, lyric_theme, lyric_summary),
@@ -224,7 +226,8 @@ ART_INDEX: dict[str, str] = _load_art_index(ART_INDEX_PATH)  # dkey → "/art/{h
 
 # ── LRC (timestamped lyrics) cache ───────────────────────────────────────────
 
-LRC_CACHE_PATH = BASE / "state" / "lyrics_lrc.json"
+LRC_CACHE_PATH  = BASE / "state" / "lyrics_lrc.json"
+PLAIN_CACHE_PATH = BASE / "state" / "lyrics_raw.json"
 
 def _load_lrc_cache(path: Path) -> dict[str, str]:
     """Load artist\ttitle → LRC string mapping. Returns {} if file absent."""
@@ -235,7 +238,8 @@ def _load_lrc_cache(path: Path) -> dict[str, str]:
     except Exception:
         return {}
 
-LRC_CACHE: dict[str, str] = _load_lrc_cache(LRC_CACHE_PATH)
+LRC_CACHE:   dict[str, str] = _load_lrc_cache(LRC_CACHE_PATH)
+PLAIN_CACHE: dict[str, str] = _load_lrc_cache(PLAIN_CACHE_PATH)  # same key format, plain lyrics
 
 
 # ── Song key (used for dedup everywhere) ─────────────────────────────────────
@@ -279,7 +283,8 @@ def load_tracks(nml_path: Path) -> list[Track]:
             duration = 0.0
         dk      = f"{artist.lower().strip()}\t{title.lower().strip()}"
         art_url = ART_INDEX.get(dk) or ""
-        lrc     = LRC_CACHE.get(dk) or ""
+        lrc     = LRC_CACHE.get(dk)   or ""
+        plain   = PLAIN_CACHE.get(dk) or ""
 
         # ── Parse COMMENT2 → theme + lyric_flags ──────────────────────────────
         # Format written by write_nml_comments.py:
@@ -313,8 +318,9 @@ def load_tracks(nml_path: Path) -> list[Track]:
             comment     = info.get("COMMENT",   "") or "",
             lyric_theme = lyric_theme,
             lyric_flags = lyric_flags,
-            lyrics_full = info.get("KEY_LYRICS", "") or "",
-            lyrics_lrc  = lrc,
+            lyrics_full  = info.get("KEY_LYRICS", "") or "",
+            lyrics_plain = plain,
+            lyrics_lrc   = lrc,
             art_url     = art_url,
         )))
 
@@ -1584,6 +1590,7 @@ body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!i
 .kl-next{font-size:11px;color:var(--text);opacity:0.28}
 .kl-word-hi{color:#fff;opacity:1!important}
 .kl-word-lead{opacity:0.55!important}
+.kl-status{font-size:9px;color:var(--text3);text-align:right;padding:0 2px 2px;opacity:0.5;letter-spacing:0.05em}
 body.passthrough #karaoke-panel{display:none!important}
 .dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--card-bg);transition:border-color .15s}
 .dc:hover{border-color:var(--border2);background:var(--bg4)}
@@ -1856,6 +1863,7 @@ body.passthrough #add-track-zone{display:none !important}
     <div class="col-body" id="b1">
       <div class="empty">Load a track in Traktor<br>— or search above.</div>
       <div id="karaoke-panel" hidden>
+        <div class="kl-status" id="kl-status"></div>
         <div class="kl kl-prev" id="kl-prev"></div>
         <div class="kl kl-curr" id="kl-curr"></div>
         <div class="kl kl-next" id="kl-next"></div>
@@ -2467,7 +2475,13 @@ function connectSSE(){
     if(d.type==='play_state'){deckPlayState(d.deck,d.playing);return}
     if(d.type==='input_text'){injectInputText(d.text);return}
     if(d.type==='position'){
-      if(_karLines&&_karDeck===d.deck) renderKaraoke(_karLines,d.elapsed*1000);
+      if(_karLines&&_karDeck===d.deck){
+        if(!_karLive){
+          _karLive=true;
+          document.getElementById('kl-status').textContent=_karStatusText(d.elapsed*1000);
+        }
+        renderKaraoke(_karLines,d.elapsed*1000);
+      }
       return;
     }
     if(d.title||d.artist) deckLoaded(d.deck,d.title,d.artist,d.type==='playing');
@@ -2544,6 +2558,8 @@ async function deckLoaded(deck,title,artist,isPlaying=false){
 // ── Karaoke lyrics display ─────────────────────────────────────────────────
 let _karLines=null;   // [{ms,text}] for playing track, or null
 let _karDeck=null;    // 'a'|'b'|null
+let _karMode='';      // 'lrc' | 'est' | ''
+let _karLive=false;   // true once a real position event has arrived for this track
 
 function parseLRC(lrc){
   const lines=[];
@@ -2566,22 +2582,31 @@ function estimateLines(plainText,durationMs){
 }
 
 function getLyricLines(track){
-  if(track&&track.lyrics_lrc)  return parseLRC(track.lyrics_lrc);
-  if(track&&track.lyrics_full) return estimateLines(track.lyrics_full,track.duration_ms);
-  return null;
+  if(track&&track.lyrics_lrc){   _karMode='lrc'; return parseLRC(track.lyrics_lrc); }
+  if(track&&track.lyrics_plain){ _karMode='est'; return estimateLines(track.lyrics_plain,track.duration_ms); }
+  _karMode=''; return null;  // no lyrics — panel stays hidden
+}
+
+function _karStatusText(elapsedMs){
+  if(_karMode==='lrc')  return _karLive?'◉ LRC sync':'◎ LRC (waiting for position...)';
+  if(_karMode==='est')  return _karLive?'◉ estimated':'◎ estimated (waiting for position...)';
+  return '';
 }
 
 function updateKaraokeSource(){
   const deck=deckPlaying.a?'a':deckPlaying.b?'b':null;
   const panel=document.getElementById('karaoke-panel');
   if(!deck||!deckTracks[deck]){
-    panel.hidden=true; _karLines=null; _karDeck=null; return;
+    panel.hidden=true; _karLines=null; _karDeck=null; _karMode=''; _karLive=false; return;
   }
   if(deck===_karDeck) return;  // already tracking this deck
-  _karDeck=deck;
+  _karDeck=deck; _karLive=false;
   _karLines=getLyricLines(deckTracks[deck]);
   panel.hidden=!_karLines;
-  if(_karLines) renderKaraoke(_karLines,0);
+  if(_karLines){
+    document.getElementById('kl-status').textContent=_karStatusText(0);
+    renderKaraoke(_karLines,0);
+  }
 }
 
 function renderKaraoke(lines,elapsedMs){
