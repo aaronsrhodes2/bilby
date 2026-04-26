@@ -45,10 +45,36 @@ SKIPPY: txBadge() returns empty. Data still calculated, just not rendered. Prese
 - Vocal cue approach makes the empty-line padding idea entirely obsolete
 - Captain said "It's brilliant" twice about the 7-line teleprompter
 
+CAPTAIN: If word sync works, bold the active word — just bold it and unbold, sweep left to right.
+
+SKIPPY: Done. In LRC mode only, interpolates position within the line's time window, bolds the word at that index. Estimated-mode lines stay plain — not accurate enough for word sync.
+
+CAPTAIN: Begin the overnight processing after you check everything in. DJ Bilby on the PC is working on SkippyTel UI tweaks.
+
+SKIPPY: Committing, pushing, then starting the full backfill — 23,547 tracks remaining.
+
+**Key decisions made:**
+- lyrics_plain from state/lyrics_raw.json, not lyrics_full (NML KEY_LYRICS which holds the AI summary)
+- Parenthetical suffix stripping for title lookup ("The Great Commandment (extended radio mix)" → matches "the great commandment")
+- Client-side 200ms timer as position fallback — scrolls from detection time, real SSE position overrides when available
+- Karaoke scroll window anchored to Traktor Cue 3 (HOTCUE=2, Vocal In) + Cue 6 (HOTCUE=5, Vocal Out) — distributes lines across actual vocal span
+- 7 rolling lines with graduated opacity 20/35/65/100/65/35/20; word sweep removed entirely for estimated mode
+- Word-bold sweep added back for LRC mode only — bold active word using timestamp interpolation, accurate enough to be meaningful
+- Transition type badges (BEAT MATCH etc.) hidden pending rebuild as auto-transition mode
+- SSE reconnect guard: close old EventSource before opening new one; stale handlers discard events
+- Full LRC backfill kicked off overnight: 23,547 tracks at 1 req/s via tools/backfill_lrc.py
+
+**Notable moments:**
+- The Snog "File can not be played" led to discovering 878 misnamed collision copies across the library — all fixed in one pass
+- Vocal cue approach makes the empty-line padding idea entirely obsolete
+- Captain said "It's brilliant" twice about the 7-line teleprompter
+- Word-bold only earns its place in LRC mode — estimated timing is too rough for it
+
 **Files modified:**
-- `stage9_dj_suggest.py` — vocal_in_ms/vocal_out_ms on Track dataclass; cue parsing in load_tracks(); estimateLines() uses cue range; 7-line karaoke display; word sweep removed; txBadge() hidden; SSE leak fix; client-side fallback timer; deck cards width/overflow fix; parenthetical title lookup fallback
+- `stage9_dj_suggest.py` — vocal_in_ms/vocal_out_ms on Track dataclass; cue parsing in load_tracks(); estimateLines() uses cue range; 7-line karaoke display; word bold in LRC mode; word sweep removed for estimated mode; txBadge() hidden; SSE leak fix; client-side fallback timer; deck cards width/overflow fix; parenthetical title lookup fallback
 - `misc/KARAOKE.md` — NEW: karaoke feature documentation
 - `misc/SESSION_LOG.md` — this entry
+- `misc/OPERATIC_PLAY_SCENE14_THE_SEVEN_LINES.txt` — NEW: scene 14
 
 ---
 

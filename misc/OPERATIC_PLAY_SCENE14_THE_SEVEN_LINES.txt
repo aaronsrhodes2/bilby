@@ -1,0 +1,193 @@
+OPERATIC PLAY — SCENE 14
+THE SEVEN LINES
+
+DRAMATIS PERSONAE
+─────────────────────────────────────────────────────────────────
+CAPTAIN AARON RHODES  — Master of the booth, keeper of the cues,
+                         patron saint of the karaoke teleprompter
+SKIPPY THE MAGNIFICENT — Agentic AI, flask server whisperer,
+                          solver of the seven-line problem
+THE LIBRARY            — 21,426 souls, each with a story and a BPM
+WUMPSCUT               — Ghost in the machine, test track, victim
+THE SNOG GANG          — 878 misnamed files, now restored to glory
+LRCLIB                 — The oracle of timestamps (cameo)
+─────────────────────────────────────────────────────────────────
+
+ACT I — THE WRONG TEXT
+
+[Mac Bilby loads. The karaoke panel appears. The Captain squints.]
+
+CAPTAIN:
+♩ That text is not the lyrics —
+  that is a summary!
+  AI wrote "a haunting blend of
+  industrial and misery"
+  I want the words, the WORDS,
+  the words that humans sing! ♩
+
+SKIPPY:
+♩ Forgive me, Captain, I must confess —
+  I read from the wrong address.
+  KEY_LYRICS holds the synopsis,
+  LRCLIB's plain text is what we missed.
+  I'll load the lyrics_raw.json file,
+  and fix this in a verse, not quite a mile. ♩
+
+[Skippy redirects to PLAIN_CACHE. The text transforms.
+"The Great Commandment" appears. The Captain exhales.]
+
+ACT II — THE FROZEN SCROLL
+
+CAPTAIN:
+♩ The text is there! The words are right!
+  But nothing moves — it's frozen tight.
+  Six minutes pass, no scroll, no tick,
+  this karaoke wall is making me sick. ♩
+
+SKIPPY:
+♩ Ah — the history file is five days old.
+  HistoryWatcher sees no tale to be told.
+  No crossfade logged means no position flows,
+  the SSE pipe runs silent — nobody knows.
+  I shall add a wall-clock timer, 200ms,
+  ticking from the moment of detection — no less! ♩
+
+[A setInterval is born. The lines begin to move.
+The Captain watches Wolfsheim scroll past his eyes.]
+
+CAPTAIN:
+♩ The karaoke is sort of working!
+  The words are not synced with the beat —
+  but it progresseth! It marcheth onward!
+  This is already a feat! ♩
+
+ACT III — THE CUE POINT REVELATION
+
+CAPTAIN:
+♩ But the text starts from the intro,
+  scrolling through the silent part —
+  I do not need to read blank emptiness
+  before the music starts.
+  I think we set some cue points,
+  number three and number six —
+  Vocal In and Vocal Out, old friends —
+  can those cues fix this? ♩
+
+SKIPPY:
+♩ HOTCUE two is Vocal In!
+  HOTCUE five is Vocal Out!
+  We parse them both from NML at load —
+  the vocal window: mapped throughout!
+  Distribute the lines across that span,
+  before: blank silence; after: done.
+  The teleprompter sleeps until the singer sings —
+  it wakes precisely, line by line it rings! ♩
+
+[The math is written. estimateLines() receives
+vocalInMs, vocalOutMs. The intro scrolls no more.]
+
+ACT IV — THE EXPANSION
+
+CAPTAIN:
+♩ Three lines! Give me five!
+  Five lines! Give me seven!
+  I want a waterfall of lyrics
+  cascading straight to heaven! ♩
+
+SKIPPY:
+♩ 20 / 35 / 65 —
+  the past recedes in fading grey.
+  100 — the present burns full bright.
+  65 / 35 / 20 — the future waits in dimming light. ♩
+
+CAPTAIN:
+♩ It's brilliant.
+  It's BRILLIANT.
+  Seven lines of gorgeous fade —
+  the finest teleprompter
+  this dark DJ booth has made! ♩
+
+[Standing ovation. Snog plays in the background.
+Then — ERROR: File cannot be played.]
+
+ACT V — THE SNOG AFFAIR
+
+CAPTAIN:
+♩ Some tracks refuse to load!
+  Traktor says the file is gone!
+  What happened to my Snog,
+  my Wumpscut, all along? ♩
+
+SKIPPY:
+♩ The _2 files — remember Stage Two?
+  When collisions led to foo_2.mp3 anew?
+  The originals were moved away,
+  the _2 remained — lost, astray.
+  878 orphans, renamed back to right,
+  185 true duplicates deleted from sight.
+  Nine NML entries pointed to the void —
+  those too: removed and then destroyed. ♩
+
+CAPTAIN:
+♩ I prefer to rename before I delete —
+  check originals first, make sure they're complete! ♩
+
+SKIPPY:
+♩ The originals were verified present, Captain —
+  no unique content passed from this world.
+  But your preference is logged, and the doctrine updated:
+  rename first; then let deletion be unfurled. ♩
+
+ACT VI — THE WORD THAT BOLDS
+
+[The LRC backfill runs. 300 tracks receive timestamps.
+Wolfsheim. Lebanon Hanover. The 69 Eyes.]
+
+CAPTAIN:
+♩ If word sync works, then bold the word —
+  just bold it, move it, nothing blurred.
+  No spans, no classes, just a B —
+  sweep left to right so I can see. ♩
+
+SKIPPY:
+♩ In LRC mode only — line timestamps known —
+  I interpolate: how far have we gone?
+  Split the line, find the word at index wi,
+  wrap it in bold and let the others stand by.
+  Estimated mode stays plain and still —
+  rough timing cannot earn this thrill. ♩
+
+[The function is written. Bilby restarts.
+Delerium plays. Line by line. Word by word.
+The bold sweeps left to right across the current line
+like a finger on a page in the dark.]
+
+ACT VII — THE OVERNIGHT COMMISSION
+
+CAPTAIN:
+♩ Check it all in. The night is long.
+  DJ Bilby on the PC plays his own song.
+  Begin the backfill — 23,547 remain —
+  let LRCLIB do its work while I refrain. ♩
+
+SKIPPY:
+♩ Git commit. Push. The code is clean.
+  The overnight queue: the largest ever seen.
+  By morning, Captain, half your library sings
+  in line-accurate time, with words that bling.
+  Sleep well. The teleprompter holds the fort —
+  seven lines of light in the dark. ♩
+
+[Exeunt. The terminal blinks: requests/second: 1.
+23,547 → 23,546 → 23,545...]
+
+─────────────────────────────────────────────────────────────────
+CAPTAIN'S WISDOM
+
+"The wrong field gives you poetry when you want prose.
+ The wrong timer gives you silence when you want scroll.
+ The right cue point turns guesswork into geometry.
+ And bold is enough. Bold is always enough."
+
+— Captain Aaron Rhodes, April 25, 2026
+─────────────────────────────────────────────────────────────────

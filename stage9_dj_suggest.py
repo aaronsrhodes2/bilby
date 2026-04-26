@@ -2847,8 +2847,18 @@ function renderKaraoke(lines,elapsedMs){
   const prev2Text=nearbyLine(-1,2);
   const prevText =nearbyLine(-1,1);
 
-  // Current line — plain text, no word sweep
+  // Current line — bold the active word when we have accurate timestamps (LRC mode)
   const curr=lines[idx];
+  let currHtml=esc(curr.text);
+  if(curr.text&&_karMode==='lrc'){
+    // Find end of this line = start of next non-blank line
+    let lineEndMs=elapsedMs+8000;
+    for(let i=idx+1;i<lines.length;i++){if(lines[i].text){lineEndMs=lines[i].ms;break;}}
+    const words=curr.text.split(' ');
+    const pct=Math.min((elapsedMs-curr.ms)/Math.max(lineEndMs-curr.ms,1),1);
+    const wi=Math.min(Math.floor(pct*words.length),words.length-1);
+    currHtml=words.map((w,i)=>i===wi?`<b>${esc(w)}</b>`:esc(w)).join(' ');
+  }
 
   // Next three lines
   const next1Text=nearbyLine(1,1);
@@ -2858,7 +2868,7 @@ function renderKaraoke(lines,elapsedMs){
   document.getElementById('kl-prev3').textContent=prev3Text;
   document.getElementById('kl-prev2').textContent=prev2Text;
   document.getElementById('kl-prev').textContent =prevText;
-  document.getElementById('kl-curr').textContent =curr.text;
+  document.getElementById('kl-curr').innerHTML   =currHtml;
   document.getElementById('kl-next').textContent =next1Text;
   document.getElementById('kl-next2').textContent=next2Text;
   document.getElementById('kl-next3').textContent=next3Text;
