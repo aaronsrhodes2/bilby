@@ -4,7 +4,7 @@
 TRACK   ?=
 LIMIT   ?=
 
-.PHONY: add sync-up intake drive-folder-id backfill-lrc sync-traktor sync-traktor-art stage9 help
+.PHONY: add sync-up intake drive-folder-id backfill-lrc sync-traktor sync-traktor-art stage9 watch-intake intake-once intake-dry help
 
 ## ── Track ingestion ──────────────────────────────────────────────────────────
 
@@ -58,6 +58,20 @@ sync-traktor-art:
 ##   make backfill-lrc LIMIT=500 (first 500)
 backfill-lrc:
 	python3 tools/backfill_lrc.py --limit $(LIMIT)
+
+## ── Intake watcher ───────────────────────────────────────────────────────────
+
+## Watch incoming/ folder and process new music files as they appear
+watch-intake:
+	python3 tools/intake_watcher.py
+
+## Process all files currently in incoming/ then exit (no daemon)
+intake-once:
+	python3 tools/intake_watcher.py --once
+
+## Dry-run: show what would be processed without doing anything
+intake-dry:
+	python3 tools/intake_watcher.py --once --dry-run
 
 ## ── Stage9 / Mac Bilby ───────────────────────────────────────────────────────
 
