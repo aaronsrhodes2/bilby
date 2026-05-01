@@ -1,3 +1,48 @@
+## SESSION 15 — May 1, 2026
+**Players:** Captain Aaron Rhodes, Skippy the Magnificent
+
+---
+
+CAPTAIN: DJ Bilby on SkippyTel wants album art and karaoke lyrics. He set up a Google Drive folder called "Traktor" for metadata sync.
+
+SKIPPY: rclone already authenticated to gdrive:. Found the Traktor folder, pushed lyrics_raw.json (18MB), lyrics_lrc.json (17MB), and album_art_index.json (1.6MB) immediately. Kicked off album art folder sync in background (838MB, 10,560 JPEGs). Added make sync-traktor and make sync-traktor-art targets.
+
+CAPTAIN: DJ Bilby played songs with "80's-" in the title. I thought we stripped all that out. Can we audit?
+
+SKIPPY: Full audit run. Found two problems: 16 files in correct artist folders with "80's-ArtistName-" prefix in the filename, and 7 files in wrong "80's-X" artist folders (Flashbacks en tu idioma Spanish covers album). Also found Drive Music/ had 348 duplicate (1) folders and 373 old-library folders from pre-pipeline sync. Fixed all filename issues on disk, patched both the live Traktor NML and corrected_traktor/collection.nml. Started rclone sync to clean Drive.
+
+CAPTAIN: We need an intake pipeline. When I drop new music files in, everything should happen automatically — tagging, lyrics, album art, cue points, SkippyTel sync.
+
+SKIPPY: Built incoming/ drop folder + intake_watcher.py daemon. Polls every 8 seconds. Drops through the full 14-step add_track pipeline: fingerprint → metadata → rename → NML → lyrics → AI summary → album art → autocue → Drive upload → SkippyTel metadata sync → git push. Success lands in incoming/done/, failure in incoming/failed/. Also added step 14 to add_track.py itself so single-track additions also push to gdrive:Traktor/ automatically.
+
+CAPTAIN: Check in as a nice feature release.
+
+SKIPPY: Session 15 logged, Scene 15 written, git tag v15.0 pushed.
+
+**Key decisions made:**
+- gdrive:Traktor/ is the canonical SkippyTel metadata feed: lyrics_raw.json + lyrics_lrc.json + album_art_index.json
+- rclone (already configured as gdrive:) handles all Drive sync — no separate API credentials needed
+- add_track.py step 14: every new track ingestion auto-pushes Traktor/ metadata
+- incoming/ drop folder is the single intake point: any audio format dropped there gets fully processed with zero interaction
+- rclone sync (not copy) corrects Drive to match local exactly, purging orphans and duplicates
+
+**Notable moments:**
+- rclone was already configured and authed — zero Drive API setup needed
+- The "80's-" audit found that the pipeline had moved the ARTIST correctly but left the filename contaminated — a two-layer bug
+- 348 Drive duplicate folders and 373 stale old-library folders revealed the Drive had never been properly synced after the pipeline ran
+
+**Files modified:**
+- `tools/intake_watcher.py` — NEW: drop-folder daemon
+- `tools/fix_80s_prefixes.py` — NEW: one-time 80's-prefix repair script
+- `tools/add_track.py` — step 14: sync gdrive:Traktor/ after intake
+- `Makefile` — sync-traktor, sync-traktor-art, watch-intake, intake-once, intake-dry targets
+- `corrected_traktor/collection.nml` — 80's-prefix FILE + DIR attributes patched
+- `incoming/README.md` — NEW: drop folder instructions
+- `misc/SESSION_LOG.md` — this entry
+- `misc/OPERATIC_PLAY_SCENE15_THE_DROP_FOLDER.txt` — NEW
+
+---
+
 ## SESSION 14 — April 25, 2026
 **Players:** Captain Aaron Rhodes, Skippy the Magnificent
 

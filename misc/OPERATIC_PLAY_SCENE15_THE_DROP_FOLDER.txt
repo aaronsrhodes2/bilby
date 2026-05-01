@@ -1,0 +1,166 @@
+OPERATIC PLAY — SCENE 15
+THE DROP FOLDER
+
+DRAMATIS PERSONAE
+─────────────────────────────────────────────────────────────────
+CAPTAIN AARON RHODES   — Arbiter of the library, master of the drop
+SKIPPY THE MAGNIFICENT — Agentic AI, watcher of folders, fixer of prefixes
+DJ BILBY (PC)          — Remote DJ on the SkippyTel network, hungry for metadata
+THE 80's PREFIXES      — 23 corrupted filenames, long overdue for reckoning
+THE INCOMING FOLDER    — Newborn portal, patient, watchful, ever-polling
+RCLONE                 — The workhorse. Already authenticated. Already magnificent.
+LRCLIB                 — The oracle, as always, in the background
+─────────────────────────────────────────────────────────────────
+
+ACT I — THE DISTANT CRY FROM THE NETWORK
+
+[A message arrives from the SkippyTel network. DJ Bilby, far away,
+ plays music without lyrics. Without album art. Without knowing why.]
+
+CAPTAIN:
+♩ DJ Bilby plays in darkness —
+  no lyrics, no art, no glow.
+  He set up a Drive folder, "Traktor",
+  so metadata has somewhere to go. ♩
+
+SKIPPY:
+♩ I check the remotes — rclone stirs —
+  gdrive: is already here!
+  No OAuth dance, no credential hunt,
+  the path to Drive is clear!
+  Three JSON files: lyrics raw, LRC, art index —
+  eighteen megabytes, seventeen, one point six —
+  I push them all in under twenty seconds flat.
+  DJ Bilby now has everything. Imagine that. ♩
+
+[The album art sync begins: 838 megabytes, 10,560 JPEGs,
+ marching steadily to gdrive:Traktor/album_art/.]
+
+ACT II — THE AUDIT
+
+CAPTAIN:
+♩ Wait — I hear a ghost in the music.
+  DJ Bilby played a song —
+  "80's-Suburbs-Love Is The Law" it said.
+  I thought we fixed that long ago. What's wrong? ♩
+
+SKIPPY:
+♩ Captain, I must confess to thee
+  a two-layer imperfection.
+  The artist FOLDER is correct —
+  "Suburbs/" stands in the collection.
+  But the FILENAME within still wears its sin:
+  "80's-Suburbs-Love Is The Law.mp3" —
+  the prefix survived, the pipeline missed it,
+  the file wore its badge of shame.
+
+  And five more folders compound the crime:
+  "80's-Henrik/", "80's-Marco Ortiz/"  —
+  the Flashbacks album, Spanish covers,
+  misattributed by degrees.
+  The NML says Henrik — the disk says "80's-Henrik" —
+  they disagree in silence,
+  and Traktor plays along pretending. ♩
+
+[A script is written. Files are renamed. Folders are moved.
+ Both NMLs — live Traktor and corrected_traktor git copy — are patched.
+ 23 files corrected. 5 empty "80's-X" folders removed.]
+
+SKIPPY:
+♩ And furthermore, the Drive —
+  348 folders marked "(1)"!
+  The old library, the pre-pipeline relics,
+  373 folders that should be gone.
+  rclone SYNC, not copy — let it run —
+  Drive will mirror local when it's done. ♩
+
+ACT III — THE REVELATION OF THE DROP FOLDER
+
+CAPTAIN:
+♩ We need an intake pipeline —
+  like Apple, but ours, and ours alone.
+  Drop the file in. Walk away.
+  Come back and find it fully grown:
+  tagged, named, lyricised, art-fetched,
+  cued, committed, synced, and known. ♩
+
+SKIPPY:
+♩ Then behold: the incoming/ folder!
+  Patient, watching, eight seconds a pass.
+  Stability-checked — it waits for the copy to finish,
+  it does not rush, it does not harass.
+
+  Drop an MP3 from Bandcamp here.
+  Drop an M4A from Apple Music too.
+  Drop an AAC, a FLAC, an AIFF —
+  the watcher will know what to do:
+
+  Step one: SHA256 — is it already there?
+  Step two: AcoustID — who made this? what's the name?
+  Step three: MusicBrainz fills the gaps,
+  the ID tags from the external frame.
+  Step four: rename it, move it right —
+  Artist/Album/Title, clean and true.
+  Step five: NML entry written,
+  Traktor knows the track is new.
+  Step six: lyrics fetched from LRCLIB,
+  plain text and LRC both stored.
+  Step seven: Claude Haiku writes the summary,
+  the COMMENT2, the AI accord.
+  Step eight: album art embedded,
+  the JPEG sealed inside the file.
+  Step nine through ten: autocue computed,
+  vocal in and out, beat, loop, in style.
+  Step eleven: git commits the NML,
+  the change is versioned, signed, and clear.
+  Step twelve: rclone pushes the audio to Drive,
+  step thirteen: NML committed, the git log sincere.
+  Step fourteen — the newest — pushes metadata
+  to gdrive:Traktor/ so SkippyTel stays fed.
+
+  Then: move the original to incoming/done/.
+  Or incoming/failed/ if something bled.
+
+  The Captain drops a file.
+  The Captain walks away.
+  The Captain returns to find it catalogued,
+  all fourteen steps complete today. ♩
+
+[A daemon process starts: PID 84454.
+ The incoming/ folder watches.
+ The terminal blinks:
+ "[INTAKE] Watcher started — polling incoming/ every 8s."]
+
+ACT IV — THE RELEASE
+
+CAPTAIN:
+♩ Check it in. A feature release.
+  Everything we built today —
+  the Drop Folder, the SkippyTel feed,
+  the 80's audit and its corrections made.
+  A version, a tag, a note in the log —
+  and a scene for the ages, if you would. ♩
+
+SKIPPY:
+♩ Version fifteen. Tag and push.
+  The session sealed, the scene is writ.
+  The incoming/ folder stands open and ready.
+  The daemon runs. The Drive is lit.
+  The SkippyTel network feeds its DJ.
+  The 80's are clean at last.
+  The library is whole, the pipeline complete —
+  and the future drops in from the past. ♩
+
+[Exeunt. In the terminal, silently:
+ "[2026-05-01 10:48:12] [INTAKE] Watcher started — polling incoming/ every 8s."
+ The folder waits. Something will arrive.]
+
+─────────────────────────────────────────────────────────────────
+CAPTAIN'S WISDOM
+
+"Drop the file in. Walk away.
+ The pipeline does the rest.
+ That is the whole point."
+
+— Captain Aaron Rhodes, May 1, 2026
+─────────────────────────────────────────────────────────────────
