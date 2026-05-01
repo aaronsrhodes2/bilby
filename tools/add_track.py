@@ -16,6 +16,7 @@ Drops one audio file all the way into the library:
   11. Apply cues to NML
   12. rclone upload to gdrive:Music/             [skipped if --no-upload]
   13. git commit NML + push                      [skipped if --no-upload]
+  14. sync lyrics + art index to gdrive:Traktor/ [skipped if --no-upload]
 
 Usage:
   python3 tools/add_track.py /path/to/file.mp3
@@ -569,6 +570,33 @@ def _compute_cues(dest: Path) -> dict:
 
 # ── Drive upload + git ────────────────────────────────────────────────────────
 
+def _sync_traktor_metadata(dry_run: bool) -> None:
+    """Push lyrics + album_art_index to gdrive:Traktor/ so SkippyTel stays current."""
+    rclone = shutil.which("rclone")
+    if not rclone:
+        print("    [skip metadata sync] rclone not found")
+        return
+    files = [
+        STATE_DIR / "lyrics_raw.json",
+        STATE_DIR / "lyrics_lrc.json",
+        STATE_DIR / "album_art_index.json",
+    ]
+    for f in files:
+        if not f.exists():
+            continue
+        if dry_run:
+            print(f"    [dry-run] rclone copy {f.name} → gdrive:Traktor/")
+            continue
+        result = subprocess.run(
+            [rclone, "copy", str(f), "gdrive:Traktor/"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0:
+            print(f"    ✓ {f.name} → gdrive:Traktor/")
+        else:
+            print(f"    [warn] metadata sync {f.name}: {result.stderr.strip()[:120]}")
+
+
 def _rclone_upload(dest: Path, meta: dict, dry_run: bool) -> bool:
     """Upload the new track to gdrive:Music/{Artist}/{Album}/"""
     rclone = shutil.which("rclone")
@@ -726,6 +754,11 @@ def add_track(src: Path, no_cues: bool = False, no_upload: bool = False,
         if not no_upload:
             p("Committing NML to git…")
             _git_commit_push(dry_run)
+
+        # ── 14. sync SkippyTel metadata to gdrive:Traktor/ ────────────────────
+        if not no_upload:
+            p("Syncing metadata to gdrive:Traktor/ for SkippyTel…")
+            _sync_traktor_metadata(dry_run)
 
         result = {"ok": True, "dest": str(dest), "artist": artist, "title": title}
         _done(True, f"Added: {artist} — {title}", progress_queue)
