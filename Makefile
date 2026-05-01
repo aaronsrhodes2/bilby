@@ -4,7 +4,7 @@
 TRACK   ?=
 LIMIT   ?=
 
-.PHONY: add sync-up intake drive-folder-id backfill-lrc stage9 help
+.PHONY: add sync-up intake drive-folder-id backfill-lrc sync-traktor sync-traktor-art stage9 help
 
 ## ── Track ingestion ──────────────────────────────────────────────────────────
 
@@ -35,6 +35,21 @@ intake:
 ## Find + print the My Drive/Music/ folder ID (run once, then set in .env)
 drive-folder-id:
 	python3 tools/drive_intake.py --find-folder
+
+## ── SkippyTel metadata sync → gdrive:Traktor/ ───────────────────────────────
+
+## Sync lyrics + art index to gdrive:Traktor/  (fast, run any time)
+sync-traktor:
+	rclone copy "state/lyrics_raw.json"       "gdrive:Traktor/" --progress
+	rclone copy "state/lyrics_lrc.json"       "gdrive:Traktor/" --progress
+	rclone copy "state/album_art_index.json"  "gdrive:Traktor/" --progress
+	@echo "Metadata JSON synced to gdrive:Traktor/"
+
+## Sync full album art folder to gdrive:Traktor/album_art/  (838MB, slow — run overnight)
+sync-traktor-art:
+	rclone sync "state/album_art/" "gdrive:Traktor/album_art/" \
+	  --progress --transfers=8 --checkers=16 \
+	  --log-file="state/traktor_art_sync.log" --log-level=INFO
 
 ## ── Karaoke / LRC ───────────────────────────────────────────────────────────
 
