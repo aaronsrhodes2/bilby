@@ -69,6 +69,10 @@ ACTIVITY_FILE   = BASE / "state" / "activity.json"
 PORT            = 7334
 OSC_PORT        = 9000
 
+# Module-level track list — populated by main() after load_tracks().
+# Referenced by AutoTransitionEngine._select_next() and _find_track_by_deck().
+tracks: list = []
+
 # ── Data model ────────────────────────────────────────────────────────────────
 
 RANKING_TO_STARS = {0: 0, 51: 1, 102: 2, 153: 3, 204: 4, 255: 5}
@@ -1216,6 +1220,10 @@ class OSCState:
                     self._elapsed[deck] = float(value)
                 except (ValueError, TypeError):
                     pass
+                # Feed auto-transition engine
+                _at_event = auto_engine.tick(deck, self._elapsed[deck], _find_track_by_deck(deck))
+                if _at_event:
+                    self._push(_at_event, suip=False)
                 self._push({"type": "position", "deck": deck,
                             "elapsed": self._elapsed.get(deck, 0.0)},
                            suip=False)
@@ -1306,6 +1314,194 @@ class OSCState:
         with self._lock:
             try: self._sse_qs.remove(q)
             except ValueError: pass
+
+
+# ── Auto-transition engine ────────────────────────────────────────────────────
+#
+# Phase 1 — Bilby picks, human fades.
+# Watches the playing deck's bar count, selects the next track automatically,
+# loads it onto the idle deck at the right moment.  Human crossfades manually.
+
+class AutoTransitionEngine:
+    """Autonomous next-track selector. Thread-safe. Hardware always wins."""
+
+    STATES = ("idle", "watching", "selecting", "armed", "loaded")
+
+    def __init__(self):
+        self._lock           = threading.Lock()
+        self.enabled         = False          # off by default — toggle in UI
+        self.mix_window_bars = 16             # bars before end to arm
+        self.bpm_tolerance   = 6.0           # % BPM difference allowed
+        self.key_strict      = True          # require Camelot ≤1 step
+        self.state           = "idle"
+        self.active_deck     = None          # deck we're watching ('a' or 'b')
+        self.next_track      = None          # chosen Track object
+        self.bars_remaining  = 0.0
+        self.reason_text     = ""
+        self._last_state     = None          # for change detection
+        self._last_bars_tier = None          # for threshold SSE triggers
+        self._osc            = None          # OSCState ref (set at startup)
+
+    def set_osc(self, osc_state):
+        self._osc = osc_state
+
+    def tick(self, deck: str, elapsed_s: float, track_obj) -> dict | None:
+        """
+        Called on every position tick (5Hz). `track_obj` is the Track for this deck.
+        Returns an event dict to broadcast via SSE if state changed, else None.
+        """
+        if not self.enabled or track_obj is None:
+            return None
+        with self._lock:
+            return self._tick_locked(deck, elapsed_s, track_obj)
+
+    def _tick_locked(self, deck: str, elapsed_s: float, track_obj) -> dict | None:
+        duration_s = track_obj.duration if track_obj.duration > 0 else 999
+        bpm        = track_obj.bpm      if track_obj.bpm > 0      else 128.0
+        bar_s      = 60.0 / bpm * 4
+        remaining  = max(duration_s - elapsed_s, 0.0)
+        bars       = remaining / bar_s
+        self.bars_remaining = bars
+        self.active_deck    = deck
+
+        prev_state = self.state
+
+        # State machine
+        if self.state == "idle" or (self.state != "idle" and self.active_deck != deck):
+            self.state      = "watching"
+            self.next_track = None
+            self.reason_text = ""
+
+        if self.state == "watching" and bars <= self.mix_window_bars + 8:
+            self.state = "selecting"
+
+        if self.state == "selecting" and self.next_track is None:
+            self._select_next(track_obj)
+
+        if self.state == "selecting" and self.next_track is not None:
+            self.state = "armed"
+
+        if self.state == "armed" and bars <= self.mix_window_bars:
+            self._do_load()
+            self.state = "loaded"
+
+        # Emit SSE when: state changes OR bars cross a round threshold
+        bars_tier = int(bars)   # changes every bar
+        changed = (self.state != prev_state or bars_tier != self._last_bars_tier)
+        self._last_bars_tier = bars_tier
+
+        if changed:
+            return self._event_dict()
+        return None
+
+    def _select_next(self, anchor_track):
+        """Pick best next track using suggest_slot2, with tighter key/BPM filter."""
+        try:
+            candidates = suggest_slot2(anchor_track, tracks, n=20)
+            for c in candidates:
+                # Verify key and BPM constraints are met
+                t_key = c.get("key", "")
+                t_bpm = c.get("bpm", 0.0)
+                t_path = c.get("path", "")
+                bpm_ok = (abs((t_bpm - anchor_track.bpm) / max(anchor_track.bpm, 1)) * 100
+                          <= self.bpm_tolerance) if anchor_track.bpm > 0 else True
+                key_ok = (key_compat(anchor_track.key, t_key) >= 0.6) if self.key_strict else True
+                if bpm_ok and key_ok and t_path:
+                    # Find the real Track object for the chosen path
+                    chosen_dict = c
+                    self.next_track = chosen_dict
+                    bpm_diff = t_bpm - anchor_track.bpm
+                    sign = "+" if bpm_diff >= 0 else ""
+                    self.reason_text = (
+                        f"{anchor_track.key}→{t_key} · "
+                        f"{t_bpm:.0f}BPM {sign}{bpm_diff:.1f} · "
+                        f"{c.get('genre','?')}"
+                    )
+                    return
+            # Fallback: take first candidate even if constraints missed
+            if candidates:
+                c = candidates[0]
+                self.next_track = c
+                self.reason_text = f"best match · {c.get('key','?')} · {c.get('bpm',0):.0f}BPM"
+        except Exception as e:
+            self.reason_text = f"selection error: {e}"
+
+    def _do_load(self):
+        """Load next_track onto the idle deck via AppleScript."""
+        if not self.next_track:
+            return
+        idle_deck = "b" if self.active_deck == "a" else "a"
+        try:
+            load_track_in_traktor(idle_deck, self.next_track)
+        except Exception as e:
+            self.reason_text += f" [load err: {e}]"
+
+    def _event_dict(self) -> dict:
+        return {
+            "type":           "auto_transition",
+            "state":          self.state,
+            "deck":           self.active_deck,
+            "next":           self.next_track,
+            "bars_remaining": round(self.bars_remaining, 1),
+            "reason":         self.reason_text,
+        }
+
+    def configure(self, **kwargs):
+        with self._lock:
+            for k, v in kwargs.items():
+                if hasattr(self, k):
+                    setattr(self, k, v)
+            if not self.enabled:
+                self.state      = "idle"
+                self.next_track = None
+                self.reason_text = ""
+
+    def override_next(self, track_dict: dict):
+        with self._lock:
+            self.next_track  = track_dict
+            self.reason_text = "manual override"
+            if self.state in ("watching", "selecting"):
+                self.state = "armed"
+
+    def cancel(self):
+        with self._lock:
+            self.next_track  = None
+            self.reason_text = ""
+            if self.state in ("selecting", "armed", "loaded"):
+                self.state = "watching"
+
+    def on_deck_change(self, new_deck: str):
+        """Call when a crossfade completes and a new deck becomes active."""
+        with self._lock:
+            if new_deck != self.active_deck:
+                self.state       = "idle"
+                self.active_deck = None
+                self.next_track  = None
+                self.reason_text = ""
+
+    def status(self) -> dict:
+        with self._lock:
+            return self._event_dict()
+
+
+# ── Module-level singletons (created once; main() wires them up) ─────────────
+
+osc_state  = OSCState()
+auto_engine = AutoTransitionEngine()
+auto_engine.set_osc(osc_state)
+
+
+def _find_track_by_deck(deck: str):
+    """Return the Track object currently loaded on `deck`, or None."""
+    info = osc_state.get_loaded().get(deck)
+    if not info:
+        return None
+    title  = info.get("title", "").lower().strip()
+    artist = info.get("artist", "").lower().strip()
+    for t in tracks:
+        if t.title.lower().strip() == title and t.artist.lower().strip() == artist:
+            return t
+    return None
 
 
 def start_osc_server(state: OSCState, port: int) -> bool:
@@ -1754,6 +1950,22 @@ body.borg #lyr-tooltip .tk{background:#000805!important;border-color:#00FF0022!i
 .kl-next3{font-size:10px;color:var(--text);opacity:0.20}
 /* kl-word-hi / kl-word-lead removed — word sweep retired */
 .kl-status{font-size:9px;color:var(--text3);text-align:right;padding:0 2px 2px;opacity:0.5;letter-spacing:0.05em}
+/* ── Auto-DJ panel ── */
+#autodj-panel{padding:8px 10px 6px;border-top:1px solid var(--border-color);margin-top:6px}
+.autodj-header{font-size:10px;letter-spacing:0.08em;opacity:0.5;text-transform:uppercase;margin-bottom:4px}
+.autodj-track{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.autodj-artist{font-size:11px;opacity:0.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.autodj-reason{font-size:10px;opacity:0.55;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.autodj-countdown-wrap{margin:5px 0 4px;height:3px;background:var(--border-color);border-radius:2px;overflow:hidden}
+.autodj-countdown-bar{height:100%;background:var(--accent,#8b5cf6);transition:width 0.8s linear;border-radius:2px}
+.autodj-actions{display:flex;gap:5px;margin-top:5px}
+.autodj-actions button{flex:1;font-size:10px;padding:3px 0;border-radius:3px;border:1px solid var(--border-color);background:transparent;color:var(--text);cursor:pointer;opacity:0.75}
+.autodj-actions button:hover{opacity:1;background:var(--border-color)}
+.autodj-load-btn{border-color:var(--accent,#8b5cf6)!important;color:var(--accent,#8b5cf6)!important}
+body.passthrough #autodj-panel{display:none!important}
+/* Auto-DJ toggle in header */
+#autodj-toggle{font-size:11px;padding:2px 8px;border-radius:3px;border:1px solid var(--border-color);background:transparent;color:var(--text);cursor:pointer;opacity:0.6;margin-left:8px}
+#autodj-toggle.active{opacity:1;border-color:var(--accent,#8b5cf6);color:var(--accent,#8b5cf6)}
 .dc{padding:8px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--card-bg);transition:border-color .15s;min-width:0;overflow:hidden}
 .dc:hover{border-color:var(--border2);background:var(--bg4)}
 .dc.dc-idle{border-color:var(--border);color:var(--text3)}
@@ -1959,6 +2171,7 @@ body.passthrough #add-track-zone{display:none !important}
   <button id="theme-btn" onclick="toggleTheme()" title="Cycle themes: Night → Day → LCARS → Borg → Passthrough">🌙</button>
   <button id="art-reload-btn" onclick="reloadArt()" title="Reload album art index (after Syncthing sync)">🖼</button>
   <button id="stt-btn" onclick="toggleSTT()" title="Toggle voice recognition (Web Speech API). Continuous mode — speech goes into search box.">🎤</button>
+  <button id="autodj-toggle" onclick="autoDjToggle()">Auto-DJ ○</button>
 </div>
 <!-- Passthrough-only strips (hidden in all other themes via CSS) -->
 <div id="deck-strip"></div>
@@ -2620,6 +2833,67 @@ async function setDeckAnchor(deck){
   await loadAnchor(t,deck);
 }
 
+// ── Auto-DJ ──────────────────────────────────────────────────────────────────
+let _autoDjEnabled = false;
+let _autoDjMaxBars = 16;
+
+function autoDjToggle(){
+  _autoDjEnabled = !_autoDjEnabled;
+  fetch('/api/auto_transition/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({enabled:_autoDjEnabled})});
+  const btn=document.getElementById('autodj-toggle');
+  if(btn){btn.textContent=_autoDjEnabled?'Auto-DJ ◉':'Auto-DJ ○';
+          btn.classList.toggle('active',_autoDjEnabled);}
+  if(!_autoDjEnabled){
+    const p=document.getElementById('autodj-panel');
+    if(p) p.hidden=true;
+  }
+}
+
+function autoDjCancel(){
+  fetch('/api/auto_transition/cancel',{method:'POST'});
+  const p=document.getElementById('autodj-panel');
+  if(p) p.hidden=true;
+}
+
+function autoDjChange(){
+  // Highlight column 2 suggestions so user can pick an override
+  const b2=document.getElementById('b2');
+  if(b2) b2.style.outline='2px solid var(--accent,#8b5cf6)';
+  setTimeout(()=>{if(b2)b2.style.outline='';},3000);
+  alert('Pick a track from column 2 — it will become the next auto-loaded track.');
+}
+
+function autoDjLoadNow(){
+  const idleDeck = _autoDjEnabled ? 'b' : 'b';  // simplified: always B for now
+  fetch('/api/auto_transition/load',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({deck:idleDeck})});
+}
+
+function handleAutoTransition(d){
+  const panel = document.getElementById('autodj-panel');
+  if(!panel) return;
+  _autoDjMaxBars = 16;  // keep in sync with server default
+  const next = d.next;
+  if(!next || d.state==='idle' || d.state==='watching' || !_autoDjEnabled){
+    panel.hidden=true; return;
+  }
+  panel.hidden=false;
+  const titleEl  = document.getElementById('autodj-title');
+  const artistEl = document.getElementById('autodj-artist');
+  const reasonEl = document.getElementById('autodj-reason');
+  const barEl    = document.getElementById('autodj-bar');
+  if(titleEl)  titleEl.textContent  = next.title  || '—';
+  if(artistEl) artistEl.textContent = next.artist || '—';
+  if(reasonEl) reasonEl.textContent = d.reason    || '';
+  if(barEl){
+    const pct = Math.min(d.bars_remaining / (_autoDjMaxBars + 8) * 100, 100);
+    barEl.style.width = pct + '%';
+    // colour the bar: green->amber->red as bars drain
+    barEl.style.background = pct > 50 ? '#22c55e' : pct > 25 ? '#f59e0b' : '#ef4444';
+  }
+}
+
 // ── SSE — auto-detect from Traktor ─────────────────────────────────────────
 let _sseSource=null;
 function connectSSE(){
@@ -2637,6 +2911,7 @@ function connectSSE(){
     }
     if(d.type==='play_state'){deckPlayState(d.deck,d.playing);return}
     if(d.type==='input_text'){injectInputText(d.text);return}
+    if(d.type==='auto_transition'){ handleAutoTransition(d); return; }
     if(d.type==='position'){
       if(_karLines&&_karDeck===d.deck){
         if(!_karLive){
@@ -2920,7 +3195,19 @@ async function loadAnchor(track,deck){
   const boxCls='anchor-box'+(track.is_instrumental?' instrumental':'');
   const anchorHtml=`<div class="${boxCls}" data-track="${esc(JSON.stringify(track))}">${deckTag}${ancArt}
     <div class="an"><span class="aa">${esc(track.artist)}</span><span style="color:#555"> — </span><span class="at">${esc(track.title)}</span></div>
-    ${meta(track,false)}${badgeRow}<div id="anc-lyric">${lyricLine(track)}</div></div>`;
+    ${meta(track,false)}${badgeRow}<div id="anc-lyric">${lyricLine(track)}</div>
+    <div id="autodj-panel" hidden>
+      <div class="autodj-header">&#x27F3; Next Up &mdash; Auto-DJ</div>
+      <div class="autodj-track" id="autodj-title"></div>
+      <div class="autodj-artist" id="autodj-artist"></div>
+      <div class="autodj-reason" id="autodj-reason"></div>
+      <div class="autodj-countdown-wrap"><div class="autodj-countdown-bar" id="autodj-bar" style="width:100%"></div></div>
+      <div class="autodj-actions">
+        <button onclick="autoDjCancel()">&#x2715; Cancel</button>
+        <button onclick="autoDjChange()">&#x21BA; Change</button>
+        <button class="autodj-load-btn" onclick="autoDjLoadNow()">&#x23F5; Load Now</button>
+      </div>
+    </div></div>`;
   if(cardsEl){
     const ab=b1.querySelector('.anchor-box');
     if(ab) ab.outerHTML=anchorHtml;
@@ -3710,6 +3997,47 @@ def make_app(tracks: list[Track], osc_state: OSCState, osc_on: bool):
         except Exception as e:
             return jsonify(ok=False, error=str(e)), 500
 
+    # ── Auto-transition API ───────────────────────────────────────────────────
+
+    @app.route("/api/auto_transition/status")
+    def auto_transition_status():
+        return jsonify(auto_engine.status())
+
+    @app.route("/api/auto_transition/config", methods=["POST"])
+    def auto_transition_config():
+        data = request.get_json(silent=True) or {}
+        kwargs = {}
+        if "enabled"          in data: kwargs["enabled"]         = bool(data["enabled"])
+        if "mix_window_bars"  in data: kwargs["mix_window_bars"] = int(data["mix_window_bars"])
+        if "bpm_tolerance"    in data: kwargs["bpm_tolerance"]   = float(data["bpm_tolerance"])
+        if "key_strict"       in data: kwargs["key_strict"]      = bool(data["key_strict"])
+        auto_engine.configure(**kwargs)
+        return jsonify(auto_engine.status())
+
+    @app.route("/api/auto_transition/override", methods=["POST"])
+    def auto_transition_override():
+        data = request.get_json(silent=True) or {}
+        track_dict = data.get("track")
+        if not track_dict:
+            return jsonify(error="track required"), 400
+        auto_engine.override_next(track_dict)
+        return jsonify(auto_engine.status())
+
+    @app.route("/api/auto_transition/cancel", methods=["POST"])
+    def auto_transition_cancel():
+        auto_engine.cancel()
+        return jsonify(auto_engine.status())
+
+    @app.route("/api/auto_transition/load", methods=["POST"])
+    def auto_transition_load():
+        data = request.get_json(silent=True) or {}
+        deck = data.get("deck", "b")
+        track_dict = auto_engine.status().get("next")
+        if not track_dict:
+            return jsonify(error="no next track selected"), 400
+        load_track_in_traktor(deck, track_dict)
+        return jsonify({"ok": True, "deck": deck})
+
     return app
 
 
@@ -3720,10 +4048,11 @@ def main():
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     print("Mac Bilby — yeah, loading the collection, one sec…", end=" ", flush=True)
-    tracks = load_tracks(TRAKTOR_NML)
+    _loaded = load_tracks(TRAKTOR_NML)
+    tracks.extend(_loaded)   # populate module-level list for AutoTransitionEngine
     print(f"{len(tracks):,} tracks. Nice.")
 
-    osc_state = OSCState()
+    # osc_state and auto_engine are module-level singletons (defined after class defs)
     osc_on    = start_osc_server(osc_state, OSC_PORT)
 
     if osc_on:

@@ -1,0 +1,6 @@
+# rclone filter for gdrive:Music/ sync
+# Excludes shared/non-owned files that cause 403 errors on deletion
+- Children of the Stars/**
+- *.docx
+- *.pdf
++ **

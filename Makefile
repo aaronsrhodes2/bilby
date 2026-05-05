@@ -21,6 +21,7 @@ add:
 ## Push corrected_music/ to Google Drive backup (Mac → Drive, one-way)
 sync-up:
 	rclone sync "corrected_music/" "gdrive:Music/" \
+	  --filter-from="tools/rclone_music_filter.txt" \
 	  --progress --transfers=8 --checkers=16 \
 	  --log-file="state/drive_upload.log" --log-level=INFO
 
